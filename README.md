@@ -51,6 +51,8 @@ The tunebot module **adds** these **optional** arguments:
 - bot=0/1  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Whether bot starts active in listening to user commands.)
 - greet=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(A smart greeting algorithm.)
 
+**For example, run it with:** python tunebot.py room=myroom user=myuser pass=mypass nick=bot
+
 <br>
 ## Settings
 
