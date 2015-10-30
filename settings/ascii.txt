@@ -1,0 +1,3 @@
+// First word is the command word. Second is method of sending notice or say. Third is message.
+
+cash notice [̲̅$̲̅(̲̅ιοο̲̅)̲̅$̲̅]

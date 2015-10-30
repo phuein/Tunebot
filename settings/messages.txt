@@ -1,0 +1,5 @@
+// First word is the command word. Second word is the sending method: notice or say. The rest is the message. One per line.
+// All $t to be replaced by target var, if none exists will use user.nick.
+// $n is replaced by sending user's nick. $b is replaced by bot's nick.
+
+test notice testing...

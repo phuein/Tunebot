@@ -1,0 +1,3 @@
+// First word is the command word. Second word is the YT or SC link or ID. One per line.
+
+boobs Jt9O2MAg9mU

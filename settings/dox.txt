@@ -1,0 +1,9 @@
+// First line first word is the command word - name. Further lines are messages.
+// Requires an empty line between every new command word.
+
+god
+Is a lie...
+
+jesus
+Is a lie, as well...
+
