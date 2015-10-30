@@ -44,8 +44,6 @@ The tinychat core module accepts these:
 - pass=PASS
 - ready=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Say something, when ready in the room.)
 - interactive=0/1 &nbsp;&nbsp;(Whether running from console or remotely.)
-- ip=IP
-- port=PORT
 
 The tunebot module **adds** these **optional** arguments:
 
