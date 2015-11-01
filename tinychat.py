@@ -1286,7 +1286,7 @@ class TinychatRoom():
         
         # Split message into several, if too long.
         if len(msg) > SETTINGS["MaxCharsPM"]:
-            maxLines = 10
+            maxLines = 9
             maxChars = maxLines * SETTINGS["MaxCharsPM"] + 10
             # Slice for efficiency, if needed.
             if len(msg) > maxChars:

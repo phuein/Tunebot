@@ -2005,7 +2005,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Wildcards are ?.
     if userCmd == "autoforgive":
         if not target:
-            room.pm(user, "Autoforgives: *" + "*, *".join(AUTOFORGIVES) + "*.")
+            # room.pm(user, "Autoforgives: *" + "*, *".join(AUTOFORGIVES) + "*.")
             return
         
         # Clear list.
@@ -2049,7 +2049,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Wildcards are ?.
     if userCmd == "autoban":
         if not target:
-            room.pm(user, "Autobans: *" + "*, *".join(AUTOBANS) + "*.")
+            # room.pm(user, "Autobans: *" + "*, *".join(AUTOBANS) + "*.")
             return
         
         # Clear list.
@@ -2089,7 +2089,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
         return
     
     if userCmd == "botters":
-        room.pm(user, "Botters: *" + "*, *".join(BOTTERS) + "*.")
+        room.notice(user, "Botters: *" + "*, *".join(BOTTERS) + "*.")
     
     # Auto close a cam by partial nick, or all.
     if userCmd == "camclose":
