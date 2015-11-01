@@ -477,13 +477,14 @@ class TinychatRoom():
                                     message.msg = " ".join(message.msg.split(" ")[2:])
                                 
                                 if message.msg.startswith("/userinfo ") and len(message.msg.split(" ")) >= 2:
-                                    if user.nick != self.nick:
-                                        # account = " ".join(message.msg.split()[1:])
-                                        account = message.msg.split()[1]
-                                        if account == "$request":
-                                            self.onUserinfoRequest(user)
-                                        else:
-                                            self.onUserinfoReceived(user, account)
+                                    pass
+                                    # if user.nick != self.nick:
+                                    #     # account = " ".join(message.msg.split()[1:])
+                                    #     account = message.msg.split()[1]
+                                    #     if account == "$request":
+                                    #         self.onUserinfoRequest(user)
+                                    #     else:
+                                    #         self.onUserinfoReceived(user, account)
                                 else:
                                     self.onPM(user, message)
                             else:
@@ -493,15 +494,6 @@ class TinychatRoom():
                         continue
                     
                     if cmd == "registered":
-                        nick = pars[0]
-                        userID = pars[1]
-                        
-                        # May occure before first join event if logged-in, so make object.
-                        user = self._getUser(nick)
-                        if not user:    user = self._makeUser(nick)
-                        
-                        user.id = userID
-                        user.accountName = self.username
                         continue
                     
                     if cmd == "join":
@@ -642,8 +634,15 @@ class TinychatRoom():
                         self._chatlog("onstatus: "+str(pars), True)
                         continue
                     
+                    if cmd == "account":
+                        userid = pars[0]["id"]
+                        account = pars[0]["account"]
+                        
+                        self.onUserinfoReceived(userid, account)
+                        continue
+                    
                     # Uncaught command! Ignore commands I don't care about.
-                    if cmd not in {"onbwdone", "pros", "startbanlist", "owner"}:
+                    if cmd not in {"onbwdone", "pros", "startbanlist", "owner", "giftpoints"}:
                         self._chatlog("UNHANDLED COMMAND: " + str(cmd) + " " + str(pars), True)
             except:
                 self._chatlog("Error handling incoming packet...", True)
@@ -697,13 +696,20 @@ class TinychatRoom():
         self.users[nick] = TinychatUser(nick)
         return self.users[nick]
     
-    # Gets an existing user by nick and returns it,
+    # Gets an existing user by nick or id number,
     # or returns False if not found.
-    def _getUser(self, nick):
-        if nick not in self.users:
-            return False
-        else:
-            return self.users[nick]
+    def _getUser(self, identifier):
+        if type(identifier) in [str, unicode]:
+            try:
+                return self.users[identifier]
+            except:
+                pass
+        elif type(identifier) is int:
+            for user in self.users.values():
+                if int(user.id) == identifier:
+                    return user
+        # No match.
+        return False
     
     # Removes an existing user by nick from the bot listing,
     # or False if user doesn't exist.
@@ -832,7 +838,7 @@ class TinychatRoom():
         self._sendCommand("banlist", [])
         
         # Get all accounts.
-        self.say("/userinfo $request")
+        # self.say("/userinfo $request")
         
         # Verbose to room.
         if SETTINGS["ReadyMessage"]: self.notice("I am now available. All systems go.")
@@ -925,11 +931,18 @@ class TinychatRoom():
             if not user.accountName and self.user.nick != new:
                 self.requestUserinfo(user)
     
+    # IRRELEVANT.
     def onUserinfoRequest(self, user):
         return
         # self.sendUserInfo(user.nick, SETTINGS["FakeUser"]) # Or self.username
     
-    def onUserinfoReceived(self, user, account):
+    def onUserinfoReceived(self, userid, account):
+        # Get user object.
+        user = self._getUser(userid)
+        if not user:
+            print("< Caught empty user at onUserinfoReceived: "+str(userid)+" >")
+            return
+        
         # Ignore repeats.
         if user.accountName == account:
             return
@@ -1418,20 +1431,24 @@ class TinychatRoom():
         
         if not user: return False
         
-        self._sendCommand("privmsg", [u"" + self._encodeMessage("/userinfo $request"), 
-            "#0,en", "b"+user.id+"-"+user.nick])
-        self._sendCommand("privmsg", [u"" + self._encodeMessage("/userinfo $request"), 
-            "#0,en", "n"+user.id+"-"+user.nick])
+        # self._sendCommand("privmsg", [u"" + self._encodeMessage("/userinfo $request"), 
+        #     "#0,en", "b"+user.id+"-"+user.nick])
+        # self._sendCommand("privmsg", [u"" + self._encodeMessage("/userinfo $request"), 
+        #     "#0,en", "n"+user.id+"-"+user.nick])
+        
+        self._sendCommand("account", [str(user.id)])
     
+    # IRRELEVANT.
     # Sends the bot's userinfo to another user, or return False if user not found.
     def sendUserInfo(self, user, username):
-        user = self._getUser(user)
-        if not user: return False
+        return
+        # user = self._getUser(user)
+        # if not user: return False
         
-        self._sendCommand("privmsg", [self._encodeMessage("/userinfo "+username),
-            "#0,en"+"n"+user.id+"-"+user.nick])
-        self._sendCommand("privmsg", [self._encodeMessage("/userinfo "+username),
-            "#0,en"+"b"+user.id+"-"+user.nick])
+        # self._sendCommand("privmsg", [self._encodeMessage("/userinfo "+username),
+        #     "#0,en"+"n"+user.id+"-"+user.nick])
+        # self._sendCommand("privmsg", [self._encodeMessage("/userinfo "+username),
+        #     "#0,en"+"b"+user.id+"-"+user.nick])
     
     # Does nothing, if has illegal characters.
     def setNick(self, nick=""):
