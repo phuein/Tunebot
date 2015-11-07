@@ -987,21 +987,21 @@ class TinychatRoom():
         # Forgive from queue, if found.
         if len(self.forgives) == 1 and self.forgives[0] is True:
             # Forgive all.
-            i = 0
+            # i = 0
             for user in self.banlist:
                 userID = user[0]
                 userNick = user[1]
-                time.sleep(0.2)
+                # time.sleep(0.2)
                 self.forgive(userID)
-                i += 1
+                # i += 1
                 # Limit.
-                if i > 50: break
+                # if i > 50: break
             # If done forgiving all, then empty list.
             if len(self.banlist) == 0:
                 self.forgives = []
         elif len(self.forgives) > 0:
             i = 0
-            j = 0
+            # j = 0
             for nick in self.forgives:
                 # First forgives all partial results.
                 # Second forgives only first result.
@@ -1013,10 +1013,11 @@ class TinychatRoom():
                         userNick = user[1]
                         
                         if word in userNick:
-                            time.sleep(0.2)
+                            # time.sleep(0.2)
                             self.forgive(userID)
-                            if self.forgives[i]: self.forgives[i] = None
-                            j += 1
+                            if self.forgives[i]:
+                                self.forgives[i] = None
+                            # j += 1
                 else:
                     for user in self.banlist:
                         userID = user[0]
@@ -1024,11 +1025,11 @@ class TinychatRoom():
                         
                         if userNick == nick:
                             self.forgive(userID)
-                            if self.forgives[i]: self.forgives[i] = None
+                            self.forgives[i] = None
                             break
                 i += 1
                 # Limit.
-                if j > 50: break
+                # if j > 50: break
             # Remove the emptied items.
             self.forgives = filter(None, self.forgives)
     
@@ -1505,8 +1506,7 @@ class TinychatRoom():
     def forgiveNick(self, nick, allPartials = False):
         if nick is True:
             # Forgive all users in banlist.
-            self.forgives = []
-            self.forgives.append(True)
+            self.forgives = [True]
         elif allPartials:
             # Forgive all partial matches.
             self.forgives.append([nick])

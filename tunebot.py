@@ -2436,7 +2436,7 @@ def onBanlistAutoforgives(room):
             
             for nick in AUTOFORGIVES:
                 if nick == userNick:
-                    time.sleep(0.2)
+                    # time.sleep(0.2)
                     room.forgive(userID)
 
 # Defense against cam spammers.
