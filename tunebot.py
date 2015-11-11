@@ -114,7 +114,8 @@ PARTY = {
 # strict Also forced indexes 0 and 1 to be lower-case.
 # Returns None on failure. Returns empty list or dict, if no content.
 def listLoader(link, online=False, parts=1, word=False, youtubes=False, unicode=False):
-    if not link: return
+    if not link:
+        return
     
     try:
         # Online file.
@@ -331,7 +332,8 @@ else:
     # TODO: Put listLoader() instead of call below.
 
 def getPlaylists(PlaylistsText):
-    if not PlaylistsText: return
+    if not PlaylistsText:
+        return
     
     try:
         raw = requests.get(PlaylistsText, timeout=15)
@@ -579,7 +581,8 @@ else:
     # TODO: Put listLoader() instead of call below.
 
 def getRandoms(randomsText):
-    if not randomsText: return
+    if not randomsText:
+        return
     
     try:
         raw = requests.get(randomsText, timeout=15)
@@ -784,7 +787,8 @@ def pmCommands(room, user, msg):
         return
     
     # Only for commands, from here on.
-    if msg[0] != CMD: return
+    if msg[0] != CMD:
+        return
     
     msg = msg[1:]   # Remove mark.
     
@@ -807,7 +811,8 @@ def pmCommands(room, user, msg):
     
     # Public commands.
     if userCmd == "mod":
-        if not MODPASS: return
+        if not MODPASS:
+            return
         
         if target == MODPASS:
             user.oper = True
@@ -815,10 +820,12 @@ def pmCommands(room, user, msg):
             return
     
     # Botter commands.
-    if not user.oper and user.nick not in BOTTERS: return
+    if not user.oper and user.nick not in BOTTERS:
+        return
     
     # Mod commands.
-    if not user.oper: return
+    if not user.oper:
+        return
     
     if userCmd == "bot":
         if tinychat.SETTINGS["BotActive"]:
@@ -948,7 +955,8 @@ def handleUserCommand(room, user, msg):
     msg = msg.strip()
     
     # Nothing to do, on empty message.
-    if not msg: return
+    if not msg:
+        return
     
     # Ignore all commands, other than reset cmd, if deactivated!
     if not tinychat.SETTINGS["BotActive"] and msg[:4] != CMD+"bot":
@@ -959,7 +967,8 @@ def handleUserCommand(room, user, msg):
         return
     
     # All commands start with an exclamation mark.
-    if msg[0] != CMD: return
+    if msg[0] != CMD:
+        return
     
     userArgs = msg.split()              # Split to words.
     
@@ -967,7 +976,8 @@ def handleUserCommand(room, user, msg):
     userCmd = userCmd[1:]               # Remove mark.
     
     # Empty command.
-    if not userCmd: return
+    if not userCmd:
+        return
     
     # Get args as string. Empty string if none.
     userArgsStr = " ".join(userArgs)
@@ -982,12 +992,14 @@ def handleUserCommand(room, user, msg):
     publicCommands(room, userCmd, userArgsStr, userArgs, target, user)
     
     # Botters and Opers.
-    if not user.oper and user.nick not in BOTTERS: return
+    if not user.oper and user.nick not in BOTTERS:
+        return
     
     botterCommands(room, userCmd, userArgsStr, userArgs, target, user)
     
     # Opers only.
-    if not user.oper: return
+    if not user.oper:
+        return
     
     operCommands(room, userCmd, userArgsStr, userArgs, target, user)
 
@@ -1722,7 +1734,8 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Plays first YT result from search.
     if userCmd == "lucky":
         # Requires an API key.
-        if not tinychat.YTkey: return
+        if not tinychat.YTkey:
+            return
         
         if not target:
             room.notice("Give me a query to search for in Youtube...")
@@ -1800,7 +1813,8 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Plays first SC result from search.
     if userCmd == "slucky":
         # Requires an API key.
-        if not tinychat.SCkey: return
+        if not tinychat.SCkey:
+            return
         
         if not target:
             room.notice("Give me a query to search for in SoundCloud...")
@@ -2033,7 +2047,8 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
         # Don't allow certain strings.
         l = "newuser"
         for word in l:
-            if target in word: return
+            if target in word:
+                return
         
         # Toggle from list.
         if target not in AUTOFORGIVES:
@@ -2077,7 +2092,8 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
         # Don't allow certain strings.
         l = "newuser"
         for word in l:
-            if target in word: return
+            if target in word:
+                return
         
         # Toggle from list.
         if target not in AUTOBANS:
@@ -2236,7 +2252,8 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     
     # Rename the bot.
     if userCmd in {"rename", "nick"}:
-        if not target: return
+        if not target:
+            return
         res = room.setNick(target)
         
         if type(res) in {str, unicode}:
@@ -2375,7 +2392,8 @@ def onNickChangeAutoban(room, user, new, old):
         user.banned = 0;
     
     # Except mods and botters.
-    if user.oper or user.nick in BOTTERS: return
+    if user.oper or user.nick in BOTTERS:
+        return
     
     # Ban newusers.
     if CONTROLS["banNewusers"] and new.find("newuser") == 0:
@@ -2449,7 +2467,8 @@ def onBroadcastDefense(room, user):
         user.banned = 0;
     
     # Except mods and botters.
-    if user.oper or user.nick in BOTTERS: return
+    if user.oper or user.nick in BOTTERS:
+        return
     
     # Auto ban phone users.
     if user.device:
@@ -3008,7 +3027,8 @@ def approveCam(room, user):
         if not user:
             return "User "+nick+" was not found..."
     
-    if not room.bpass: return
+    if not room.bpass:
+        return
     
     room._sendCommand("privmsg", [room._encodeMessage("/allowbroadcast "+room.bpass),
         "#0,en"+"n"+ user.id+"-"+user.nick])
@@ -3050,32 +3070,35 @@ def isOverplaying(limit=1):
         return True
 
 # Return True if string is in name (as substring.)
+# wildcard will match any character, but not nothing.
 # exact checks full equality.
 # case forces case-sensitivity, with either method.
 def isMatch(string, name, exact=False, case=False, wildcard="?"):
-    # Remove wildcard characters, as they don't count.
-    if wildcard:
+    # Case-sensitivity.
+    if not case:
+        name    = name.lower()
+        string  = string.lower()
+    
+    # Exact match, handling wildcards and case.
+    if exact:
+        # Replace with wildcards in name.
         for i in range(len(string)):
             if string[i] == wildcard:
                 # Replace char at index.
                 name = name[:i]+wildcard+name[i+1:]
-        # Update variables by removing wildcards.
-        name    = name.replace(wildcard, "")
-        string  = string.replace(wildcard, "")
-    
-    # Case-insensitive.
-    if not case:
-        string  = string.lower()
-        name    = name.lower()
-    
-    if exact:
-        # Exact match, after handling wildcards and case.
-        if string == name:
+        
+        if name == string:
             return True
-    else:
-        # Or substring match.
-        if string in name:
-            return True
+        
+        return
+    
+    # Escape characters for RE, and replace wildcard with RE wildcard.
+    stringFixed = ".".join(map(re.escape, string.split("?")))
+    
+    r = re.compile(stringFixed)
+    
+    if r.search(name):
+        return True
 
 if __name__ == "__main__":
     # Apply tinychat global settings.
