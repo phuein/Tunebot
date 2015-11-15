@@ -2444,6 +2444,10 @@ def onNickChangeAutoban(room, user, new, old):
 def onUserinfoReceivedExtended(room, user, account):
     if account in BANNED_ACCOUNTS:
         room.ban(user)
+    
+    # Modders.
+    if "*"+account in BOTTERS:
+        user.oper = True
 
 # Forgive from autoforgives.
 def onBanlistAutoforgives(room):
