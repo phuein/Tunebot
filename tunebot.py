@@ -695,7 +695,7 @@ def onNoticeBans(room, notice):
 # Room spam defenses and greets, and commands.
 def onMessageExtended(room, user, msg):
     # Spam defenses for unrecognized users.
-    if not user.oper and user.nick not in BOTTERS:
+    if not user.oper and not isBotter(user):
         msgL = msg.lower()
         
         # Auto ban screenshotters and TC link spammers.
@@ -757,7 +757,7 @@ def onMessageExtended(room, user, msg):
 # PM defenses and commands.
 def onPMExtended(room, user, msg):
     # Spam defenses for unrecognized users.
-    if not user.oper and user.nick not in BOTTERS:
+    if not user.oper and not isBotter(user):
         msgL = msg.lower()
         
         # Banwords, by substring.
@@ -820,7 +820,7 @@ def pmCommands(room, user, msg):
             return
     
     # Botter commands.
-    if not user.oper and user.nick not in BOTTERS:
+    if not user.oper and not isBotter(user):
         return
     
     # Mod commands.
@@ -992,7 +992,7 @@ def handleUserCommand(room, user, msg):
     publicCommands(room, userCmd, userArgsStr, userArgs, target, user)
     
     # Botters and Opers.
-    if not user.oper and user.nick not in BOTTERS:
+    if not user.oper and not isBotter(user):
         return
     
     botterCommands(room, userCmd, userArgsStr, userArgs, target, user)
@@ -1044,7 +1044,7 @@ def publicCommands(room, userCmd, userArgsStr, userArgs, target, user):
             return
         
         # Only moderators can send help to others.
-        if not user.oper and user.nick not in BOTTERS: 
+        if not user.oper and not isBotter(user): 
             room.notice("Only *botters* can send *!help* to other users...")
             return
         
@@ -1115,7 +1115,7 @@ def publicCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # The only command that works for botters/opers only,
     # And only shows info for the public.
     if userCmd == "botter":
-        if not user.oper and user.nick not in BOTTERS:
+        if not user.oper and not isBotter(user):
             room.notice("You ain't a botter, " + user.nick + "... Suck my dick.")
             return
         
@@ -1125,7 +1125,7 @@ def publicCommands(room, userCmd, userArgsStr, userArgs, target, user):
             else:
                 room.notice("I obey your commands, " + user.nick + ".")
         else:
-            if target in BOTTERS:
+            if isBotter(target):
                 BOTTERS.remove(target)
                 room.notice(target + " has been remove from the botters list. Fuck them.")
             else:
@@ -1918,7 +1918,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
             room.say("Give me a nickname to ban...")
             return
         
-        if target in BOTTERS:
+        if isBotter(target):
             room.notice("I do not ban botters...")
             return
         
@@ -1938,7 +1938,8 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
         
         for nick, user in room.users.items():
             # Don't ban Botters.
-            if nick in BOTTERS: continue
+            if isBotter(user):
+                continue
             
             if target in nick:
                 room.ban(user)
@@ -1956,7 +1957,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
             room.notice(target + " was not found in the userlist...")
             return
         
-        if who.nick in BOTTERS:
+        if isBotter(who):
             room.notice("I do not ban botters...")
             return
         
@@ -1981,7 +1982,8 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
         
         for nick, user in room.users.items():
             # Don't ban Botters.
-            if nick in BOTTERS: continue
+            if isBotter(user):
+                continue
             
             if target in nick:
                 userID = user.id
@@ -2370,7 +2372,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
 def onJoinHandle(room, user):
     # Ban all mode.
     if CONTROLS['autoban']:
-        if not user.oper and user.nick not in BOTTERS:
+        if not user.oper and not isBotter(user):
             room.ban(user)
     
     # Autogreetings.
@@ -2392,7 +2394,7 @@ def onNickChangeAutoban(room, user, new, old):
         user.banned = 0;
     
     # Except mods and botters.
-    if user.oper or user.nick in BOTTERS:
+    if user.oper or isBotter(user):
         return
     
     # Ban newusers.
@@ -2446,8 +2448,12 @@ def onUserinfoReceivedExtended(room, user, account):
         room.ban(user)
     
     # Modders.
-    if "*"+account in BOTTERS:
+    if isBotter("*"+account):
         user.oper = True
+    
+    # Botter by account.
+    if isBotter("@"+account):
+        user.botter = True
 
 # Forgive from autoforgives.
 def onBanlistAutoforgives(room):
@@ -2471,7 +2477,7 @@ def onBroadcastDefense(room, user):
         user.banned = 0;
     
     # Except mods and botters.
-    if user.oper or user.nick in BOTTERS:
+    if user.oper or isBotter(user):
         return
     
     # Auto ban phone users.
@@ -3103,6 +3109,32 @@ def isMatch(string, name, exact=False, case=False, wildcard="?"):
     
     if r.search(name):
         return True
+
+# Return True if user is botter,
+# by nick or account. False otherwise.
+def isBotter(user=None):
+    if not user:
+        return False
+    
+    # Nickname.
+    if type(user) in [unicode, str]:
+        if user in BOTTERS:
+            return True
+    # User object.
+    else:
+        # Property. Only applies to botter from account.
+        try:
+            if user.botter:
+                return True
+        except:
+            pass
+        
+        # Nickname.
+        if user.nick in BOTTERS:
+            return True
+    
+    # No match.
+    return False
 
 if __name__ == "__main__":
     # Apply tinychat global settings.

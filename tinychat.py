@@ -638,6 +638,10 @@ class TinychatRoom():
                         userid = pars[0]["id"]
                         account = pars[0]["account"]
                         
+                        if not userid or not account:
+                            self._chatlog("Got buggy user account: "+str(pars), True)
+                            continue
+                        
                         self.onUserinfoReceived(userid, account)
                         continue
                     
@@ -825,7 +829,8 @@ class TinychatRoom():
         # Humane delay.
         time.sleep(1.5)
         
-        if self.nick: self.setNick()
+        if self.nick:
+            self.setNick()
         
         # Instructions or further handling.
         if SETTINGS['onJoinsdoneExtend']:
@@ -836,9 +841,6 @@ class TinychatRoom():
         
         # Otherwise, do things when done entering room.
         self._sendCommand("banlist", [])
-        
-        # Get all accounts.
-        # self.say("/userinfo $request")
         
         # Verbose to room.
         if SETTINGS["ReadyMessage"]: self.notice("I am now available. All systems go.")
