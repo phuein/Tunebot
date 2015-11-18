@@ -2086,7 +2086,8 @@ def getYTid(vid):
 # Or an error message on failure.
 def getSCid(track):
     # Requires access to the API.
-    if not SCkey: return "A SoundCloud Client ID is required to fetch the track ID from a link..."
+    if not SCkey:
+        return "A SoundCloud Client ID is required to fetch the track ID from a link..."
     
     # A number may be a track ID.
     # Expected from an automated lister in the bot;
@@ -2097,6 +2098,9 @@ def getSCid(track):
     except:
         # Get track ID.
         try:
+            # url must be full.
+            if track.startswith(("soundcloud.com/", "www.soundcloud.com/")):
+                track = "http://"+track
             raw = requests.get("http://api.soundcloud.com/resolve?client_id="+SCkey+"&url="+track)
             trackObj = raw.json()
             trackID = trackObj["id"]
