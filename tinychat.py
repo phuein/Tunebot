@@ -273,6 +273,7 @@ class TinychatUser():
         self.accountName = ""
         self.broadcasting = False   # Can't tell if stopped broadcasting.
         self.device = ""            # Tinychat identifies Android & iPhone users.
+        self.pro = False
 
 # A single room connection.
 class TinychatRoom():
@@ -470,23 +471,13 @@ class TinychatRoom():
                             message = TinychatMessage(m, nick, user, recipient, color)
                             user.lastMsg = message
                             user.color = color
-                            # BUFIX: Should probably be without the .lower()s.
-                            if recipient.lower() == self.nick.lower():
+                            # UNTESTED: Removed .lower() from both sides.
+                            if recipient == self.nick.lower():
                                 message.pm = True
                                 if message.msg.startswith("/msg ") and len(message.msg.split(" ")) >= 2:
                                     message.msg = " ".join(message.msg.split(" ")[2:])
                                 
-                                if message.msg.startswith("/userinfo ") and len(message.msg.split(" ")) >= 2:
-                                    pass
-                                    # if user.nick != self.nick:
-                                    #     # account = " ".join(message.msg.split()[1:])
-                                    #     account = message.msg.split()[1]
-                                    #     if account == "$request":
-                                    #         self.onUserinfoRequest(user)
-                                    #     else:
-                                    #         self.onUserinfoReceived(user, account)
-                                else:
-                                    self.onPM(user, message)
+                                self.onPM(user, message)
                             else:
                                 # Ignore public userinfo requests.
                                 if not message.msg.startswith("/userinfo "):
@@ -645,8 +636,20 @@ class TinychatRoom():
                         self.onUserinfoReceived(userid, account)
                         continue
                     
+                    if cmd == "pros":
+                        for userid in pars:
+                            user = self._getUser(userid)
+                            
+                            if not user:
+                                self._chatlog('Failed to _getUser() in pros, userid: '+str(userid), True)
+                                continue
+                            
+                            user.pro = True
+                            self._chatlog(user.nick + " is on a pro account.", True)
+                        continue
+                    
                     # Uncaught command! Ignore commands I don't care about.
-                    if cmd not in {"onbwdone", "pros", "startbanlist", "owner", "giftpoints"}:
+                    if cmd not in {"onbwdone", "startbanlist", "owner", "giftpoints"}:
                         self._chatlog("UNHANDLED COMMAND: " + str(cmd) + " " + str(pars), True)
             except:
                 self._chatlog("Error handling incoming packet...", True)
@@ -710,8 +713,12 @@ class TinychatRoom():
                 pass
         elif type(identifier) is int:
             for user in self.users.values():
-                if int(user.id) == identifier:
-                    return user
+                try:
+                    if int(user.id) == identifier:
+                        return user
+                except:
+                    self._chatlog('_getUser found user with invalid user.id: '+str(user), True)
+                    traceback.print_exc()
         # No match.
         return False
     
