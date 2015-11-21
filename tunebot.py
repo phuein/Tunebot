@@ -1178,7 +1178,7 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Close cam by nickname.
     if userCmd == "uncam":
         if not target:
-            room.say("Give me a nickname to close...")
+            room.notice("Give me a nickname to close...")
             return
         
         room.uncam(target)
@@ -1365,7 +1365,7 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
                     i += 1
                 room.notice("The playlist *" + target.title() + "* contains these tracks: " + tracks)
             except:
-                room.say("*" + target.title() + "* playlist does not exist...")
+                room.notice("*" + target.title() + "* playlist does not exist...")
         return
     
     if userCmd == "pl" or userCmd == "playlist":
@@ -1398,7 +1398,7 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
                 skip = pl[track][2]
                 room.startYT(vid, skip)
             except:
-                room.say("Track #" + str(track) + " does not exist..." + 
+                room.notice("Track #" + str(track) + " does not exist..." + 
                         " Playlist " + target.title() + " has " + str(len(pl)) + " tracks...")
             return
         
@@ -1447,7 +1447,7 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
             try:
                 track = int(track)-1
             except:
-                room.say("Give me a track number to play, or let me choose randomly...")
+                room.notice("Give me a track number to play, or let me choose randomly...")
                 return
             
             # Add to queue.
@@ -1456,7 +1456,7 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
                 skip = pl[track][2]
                 queueTrack(room, vid, skip=skip)
             except:
-                room.say("Track #" + str(track) + " does not exist..." + 
+                room.notice("Track #" + str(track) + " does not exist..." + 
                         " Playlist " + target.title() + " has " + str(len(pl)) + " tracks...")
             return
     
@@ -1915,7 +1915,7 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
 def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     if userCmd == "ban":
         if not target:
-            room.say("Give me a nickname to ban...")
+            room.notice("Give me a nickname to ban...")
             return
         
         if isBotter(target):
@@ -1933,7 +1933,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Ban all users by substring.
     if userCmd in {"banall", "banthese"}:
         if not target:
-            room.say("Give me a part of a nickname, to ban all matching users...")
+            room.notice("Give me a part of a nickname, to ban all matching users...")
             return
         
         for nick, user in room.users.items():
@@ -1948,7 +1948,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Bans and forgives.
     if userCmd == "kick":
         if not target:
-            room.say("Give me a nickname to kick...")
+            room.notice("Give me a nickname to kick...")
             return
         
         who = room._getUser(target)
@@ -1977,7 +1977,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     
     if userCmd in {"kickall", "kickthese"}:
         if not target:
-            room.say("Give me a part of a nickname, to kick all matching users...")
+            room.notice("Give me a part of a nickname, to kick all matching users...")
             return
         
         for nick, user in room.users.items():
@@ -1993,7 +1993,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     
     if userCmd == "forgive":
         if not target:
-            room.say("Give me an exact nickname to forgive...")
+            room.notice("Give me an exact nickname to forgive...")
             return
         
         room.forgiveNick(target)        # Case-sensitive.
@@ -2004,7 +2004,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Forgives all users in room.banlist, or by substring.
     if userCmd == "forgiveall":
         if not target:
-            room.say("Give me a partial string to forgive all matching nicknames, " +
+            room.notice("Give me a partial string to forgive all matching nicknames, " +
                         "or ! to forgive all users...")
         elif target == "!":
             room.forgiveNick(True)
