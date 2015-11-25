@@ -588,6 +588,14 @@ class TinychatRoom():
                         self._chatlog(user.nick + " is oper.", True)
                         continue
                     
+                    if cmd == "deop":
+                        nick    = pars[1]
+                        
+                        user = self._getUser(nick)
+                        user.oper = False
+                        self._chatlog(user.nick + " has lost their oper.", True)
+                        continue
+                    
                     if cmd == "banlist":
                         self.onBanlist(pars)
                         continue
@@ -611,10 +619,20 @@ class TinychatRoom():
                         continue
                     
                     if cmd == "from_owner":
-                        # Format: notice%20word%20word
-                        notice = pars[0][len("notice"):].replace("%20", " ")
+                        # Format: noticeword%20word
+                        # or _closebob
+                        s = pars[0]
                         
-                        self.onNotice(notice)
+                        # A notice message.
+                        if s.startswith("notice"):
+                            notice = pars[0][len("notice"):].replace("%20", " ")
+                            self.onNotice(notice)
+                        # Someone was uncammed.
+                        elif s.startswith("_close"):
+                            target = s[len("_close"):]
+                            self.onCamClosed(target)
+                        else:
+                            self._chatlog("UNHANDLED from_owner: "+str(pars), True)
                         continue
                     
                     if cmd == "_error":
@@ -629,8 +647,8 @@ class TinychatRoom():
                         userid = pars[0]["id"]
                         account = pars[0]["account"]
                         
-                        if not userid or not account:
-                            self._chatlog("Got buggy user account: "+str(pars), True)
+                        # User asked is not logged in.
+                        if account == "$noinfo" or userid == 0:
                             continue
                         
                         self.onUserinfoReceived(userid, account)
@@ -700,7 +718,7 @@ class TinychatRoom():
     # Adds a new user from nickname.
     # Returns the new user object.
     def _makeUser(self, nick):
-        self.users[nick] = TinychatUser(nick)
+        self.users[nick] = TinychatUser(nick=nick)
         return self.users[nick]
     
     # Gets an existing user by nick or id number,
@@ -899,12 +917,21 @@ class TinychatRoom():
     def onPM(self, user, message):
         self._chatlog("(pm) " + user.nick + ": " + message.msg)
         
-        msg = message.msg.strip()
+        if msg == "/reported":
+            reported = True
+            acct = "Not Logged-In"
+            if user.accountName:
+                acct = user.accountName
+            self._chatlog("You have been REPORTED for abuse by "+
+                user.nick+" ("+str(user.id)+") ("+acct+")!", True)
+        else:
+            reported = False
+            self._chatlog("(pm) " + user.nick + ": " + msg)
         
         # Further handling.
         if SETTINGS['onPMExtend']:
             try:
-                SETTINGS['onPMExtend'](self, user, msg)
+                SETTINGS['onPMExtend'](self, user, msg, reported)
             except:
                 traceback.print_exc()
     
@@ -1068,6 +1095,22 @@ class TinychatRoom():
         
         self._chatlog(nick + " is now broadcasting.", True)
         user.broadcasting = True
+    
+    # When any cam is closed (by mod), in the room.
+    def onCamClosed(self, nick=None):
+        if not nick:
+            return
+        
+        self._chatlog(nick+" has been uncammed.", True)
+        
+        if nick == self.user.nick:
+            self.onCam = False
+        else:
+            user = self._getUser(nick)
+            if not user:
+                return
+            
+            user.broadcasting = False
     
     # Track all the room's YT events.
     def trackYT(self, msg, user):

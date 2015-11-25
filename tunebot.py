@@ -743,19 +743,29 @@ def onMessageExtended(room, user, msg):
                 
                 # First greeting.
                 opts = {"hi", "hey", "hello", "sup", "howdy"}
-                words = msgL.split()
-                if any(x in words[0] for x in opts) and len(words) <= 3:
-                    # Get random greeting.
-                    greetOpts = ["Welcome", "Hi", "Hello", "Hey", "Howdy"]
-                    r = random.randint(0, len(greetOpts)-1)
-                    # Greet.
-                    room.say(greetOpts[r] + " " + user.nick)
+                for word in opts:
+                    if word in msgL:
+                        # Get random greeting.
+                        greetOpts = ["Welcome", "Hi", "Hello", "Hey", "Howdy", "Sup", "Cheers"]
+                        r = random.randint(0, len(greetOpts)-1)
+                        # Greet.
+                        room.say(greetOpts[r] + " " + user.nick)
+                        break
     
     # Room commands.
     handleUserCommand(room, user, msg)
 
 # PM defenses and commands.
-def onPMExtended(room, user, msg):
+def onPMExtended(room, user, msg, reported):
+    # The user reported bot to Tinychat. Autoban.
+    if reported:
+        room.ban(user)
+        acct = "Not Logged-In"
+        if user.accountName:
+            acct = user.accountName
+        room._chatlog(user.nick+" ("+str(user.id)+") ("+acct+") has been banned from REPORTED.", True)
+        return
+    
     # Spam defenses for unrecognized users.
     if not user.oper and not isBotter(user):
         msgL = msg.lower()
