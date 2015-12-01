@@ -1106,7 +1106,7 @@ def publicCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Random response from list commands.
     for key, val in RANDOM_CMDS.items():
         if userCmd == key:
-            r = random.randint(0, len(val))
+            r = random.randint(0, len(val)-1)
             msg = val[r]
             
             # Replace bot nick, user nick, and target.

@@ -908,6 +908,10 @@ class TinychatRoom():
             except:
                 traceback.print_exc()
         
+        # Further events must only come from opers!
+        if not user.oper:
+            return
+        
         # Track YT events.
         self.trackYT(msg, user)
         # Track SC events.
