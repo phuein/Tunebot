@@ -1,0 +1,8 @@
+// The playlists online text file format, linked to here, is:
+// First word in block is playlist title. Each line is link, title, and optional skip in seconds. Empty line before a new playlist. Avoid mistakingly putting a number at the end, if no skip wanted!
+// e.g.
+// Anime
+// https://www.youtube.com/watch?v=03x0bU2w9HI Lucky Star OP
+// 
+// Disney
+// https://www.youtube.com/watch?v=t6Ol7VsZGk4 The Little Mermaid - Part of Your World

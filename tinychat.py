@@ -666,8 +666,21 @@ class TinychatRoom():
                             self._chatlog(user.nick + " is on a pro account.", True)
                         continue
                     
+                    if cmd == "giftpoints":
+                        for i in range(0, len(pars), 3):
+                            userid = pars[i]
+                            points = pars[i+1]
+                            emptystring = pars[i+2] # Meaningless, eh.
+                            
+                            try:
+                                usr = self._getUser(userid)
+                                self._chatlog(usr.nick + " ("+str(userid)+") has "+str(points)+" gift points.", True)
+                            except:
+                                self._chatlog(str(userid)+" has "+str(points)+" gift points.", True)
+                        continue
+                    
                     # Uncaught command! Ignore commands I don't care about.
-                    if cmd not in {"onbwdone", "startbanlist", "owner", "giftpoints"}:
+                    if cmd not in {"onbwdone", "startbanlist", "owner"}:
                         self._chatlog("UNHANDLED COMMAND: " + str(cmd) + " " + str(pars), True)
             except:
                 self._chatlog("Error handling incoming packet...", True)
