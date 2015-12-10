@@ -2376,6 +2376,18 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
 
 # Extended join handling.
 def onJoinHandle(room, user):
+    # Check account.
+    if user.account in BANNED_ACCOUNTS:
+        room.ban(user)
+    
+    # Modders.
+    if isBotter("*"+user.account):
+        user.mod = True
+    
+    # Botter by account.
+    if isBotter("@"+user.account):
+        user.botter = True
+    
     # Ban all mode.
     if CONTROLS['autoban']:
         if not user.mod and not isBotter(user):
@@ -2447,19 +2459,6 @@ def onNickChangeAutoban(room, user, new, old):
             room._chatlog(user.nick+" ("+user.id+") has been banned from AUTOBANS: "+string, True)
             user.banned += 1
             return
-
-# Autobanned accounts.
-def onUserinfoReceivedExtended(room, user, account):
-    if account in BANNED_ACCOUNTS:
-        room.ban(user)
-    
-    # Modders.
-    if isBotter("*"+account):
-        user.mod = True
-    
-    # Botter by account.
-    if isBotter("@"+account):
-        user.botter = True
 
 # Forgive from autoforgives.
 def onBanlistAutoforgives(room):
@@ -3156,7 +3155,6 @@ if __name__ == "__main__":
     tinychat.SETTINGS["onMessageExtend"]            = onMessageExtended
     tinychat.SETTINGS["onPMExtend"]                 = onPMExtended
     tinychat.SETTINGS["onNickChangeExtend"]         = onNickChangeAutoban
-    tinychat.SETTINGS["onUserinfoReceivedExtend"]   = onUserinfoReceivedExtended
     tinychat.SETTINGS["onBanlistExtend"]            = onBanlistAutoforgives
     tinychat.SETTINGS["onBroadcastExtend"]          = onBroadcastDefense
     tinychat.SETTINGS["disconnectExtend"]           = disconnectDefenses
