@@ -579,7 +579,8 @@ class FlashSharedObject:
 class RtmpClient:
     """ Represents an RTMP client. """
 
-    def __init__(self, ip, port, tc_url="", page_url="", swf_url="", app="", flashVer=""):
+    def __init__(self, ip, port, tc_url="", page_url="", swf_url="", app="", flashVer="", 
+        account="", prefix="", room="", version="", rtype="", cookie=""):
         """ Initialize a new RTMP client. """
         self.ip = ip
         self.port = port
@@ -590,6 +591,12 @@ class RtmpClient:
         self.shared_objects = []
         self.flashVer = flashVer
         
+        self.account = account
+        self.prefix = prefix
+        self.room = room
+        self.version = version
+        self.rtype = rtype
+        self.cookie = cookie
         
         # superDebugNotice("rtmp client __init__")
         # superDebug("ip", self.ip)
@@ -637,7 +644,7 @@ class RtmpClient:
 
         # superDebugFooter()
 
-    def connect_rtmp(self, connect_params):
+    def connect_rtmp(self):
         """ Initiate a NetConnection with a Flash Media Server. """
         msg = {
             'msg': DataTypes.COMMAND,
@@ -647,7 +654,7 @@ class RtmpClient:
                 1,
                 {
                     'videoCodecs': 252,
-                    'audioCodecs': 3191,
+                    'audioCodecs': 3575,
                     'flashVer': self.flashVer,
                     'app': self.app,
                     'tcUrl': self.tc_url,
@@ -657,6 +664,14 @@ class RtmpClient:
                     'fpad': False,
                     'swfUrl': self.swf_url,
                     'objectEncoding': 0
+                },
+                {
+                    'account': self.account,
+                    'prefix': self.prefix,
+                    'room': self.room,
+                    'version': self.version,
+                    'type': self.rtype,
+                    'cookie': self.cookie
                 }
             ]
         }
@@ -665,7 +680,7 @@ class RtmpClient:
         # superDebug("command", msg)
         # superDebug("connect_params", connect_params)
 
-        msg['command'].extend(connect_params)
+        # msg['command'].extend()
         self.writer.write(msg)
         self.writer.flush()
 
@@ -715,7 +730,7 @@ class RtmpClient:
 
         return False
 
-    def connect(self, connect_params):
+    def connect(self):
         """ Connect to the server with the given connect parameters. """
 
         # superDebugNotice("rtmp client connect")
@@ -741,7 +756,7 @@ class RtmpClient:
         self.writer = RtmpWriter(self.stream)
 
         # superDebugNotice("performing rtmp connect")
-        self.connect_rtmp(connect_params)
+        self.connect_rtmp()
 
         # superDebugFooter()
 

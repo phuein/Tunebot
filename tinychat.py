@@ -179,9 +179,8 @@ def debugPrint(msg, room="unknown_room"):
         d = LOG_BASE_DIRECTORY
         if not os.path.exists(d): os.makedirs(d)
         
-        logfile = open(d + room + "_debug.log", "a")
-        logfile.write(msg + "\n")
-        logfile.close()
+        with open(d + room + "_debug.log", "a") as logfile:
+            logfile.write(msg + "\n")
 
 TINYCHAT_COLORS = {
     'blue'       : '#1965b6',
@@ -209,8 +208,8 @@ TINYCHAT_COLORS = {
 SCkey = ''
 filename = SETTINGS_DIRECTORY + "scclientid.txt"
 try:
-    SCkey = open(filename)
-    SCkey = SCkey.read().strip()
+    with open(filename) as f:
+        SCkey = f.read().strip()
 except:
     print("Failed to load the SoundCloud API key from " + filename + ".")
 
@@ -218,8 +217,8 @@ except:
 YTkey = ''
 filename = SETTINGS_DIRECTORY + "ytapikey.txt"
 try:
-    YTkey = open(filename)
-    YTkey = YTkey.read().strip()
+    with open(filename) as f:
+        YTkey = f.read().strip()
 except:
     print("Failed to load the Youtube API key from " + filename + ".")
 
@@ -263,17 +262,23 @@ class TinychatMessage():
 
 # User properties object.
 class TinychatUser():
-    def __init__(self, nick="", userID="", color="", lastMsg=""):
+    def __init__(self, nick="", userID="", color=""):
         self.nick = nick
         self.id = userID
         self.color = color
-        self.lastMsg = lastMsg
-        self.oper = False
+        self.lastMsg = ""
+        self.mod = False
         self.admin = False
-        self.accountName = ""
+        self.account = ""
         self.broadcasting = False   # Can't tell if stopped broadcasting.
         self.device = ""            # Tinychat identifies Android & iPhone users.
         self.pro = False
+        
+        self.lf = False             # ???
+        self.own = False            # ???
+        self.gp = 0                 # Giftpoints. int()
+        self.alevel = ""            # ???
+        self.bf = False             # ???
 
 # A single room connection.
 class TinychatRoom():
@@ -351,9 +356,9 @@ class TinychatRoom():
         self.port = int(tcurlsplits3[1])
         self.app = tcurlsplits1[3]                              # Defining Tinychat FMS App
         self.pageurl = "http://tinychat.com/"+room              # Definging Tinychat's Room HTTP URL
-        self.swfurl = "http://tinychat.com/embed/Tinychat-11.1-1.0.0.0640.swf?version=1.0.0.0640/[[DYNAMIC]]/8" #static
-        self.flashVer = "WIN 18,0,0,232"                        # static
-        self.pc = "Desktop 1.0.0.0640"
+        self.swfurl = "http://tinychat.com/embed/Tinychat-11.1-1.0.0.0649.swf?version=1.0.0.0649/[[DYNAMIC]]/8" #static
+        self.flashVer = "WIN 19,0,0,245"                        # static
+        self.pc = "Desktop 1.0.0.0649"
         
         # Overrides.
         if SETTINGS["IP"]: self.ip = SETTINGS["IP"]
@@ -389,9 +394,10 @@ class TinychatRoom():
             debugPrint("AutoOp: " + str(self.autoop), self.room)
             debugPrint("Time Cookie: " + str(self.timecookie), self.room)
             self.connection = rtmp_protocol.RtmpClient(self.ip, self.port, self.tcurl, 
-                self.pageurl, self.swfurl, self.app, self.flashVer)
+                self.pageurl, self.swfurl, self.app, self.flashVer,
+                self.username, self.site, self.room, self.pc, self.type, self.timecookie)
             try:
-                self.connection.connect([self.room, self.autoop, self.type, self.site, self.username, "", self.timecookie])
+                self.connection.connect()
                 self.connected = True
                 SETTINGS["Reconnecting"] = False
                 self._chatlog(" === Connected to " + self.room + " === ", True)
@@ -453,7 +459,8 @@ class TinychatRoom():
                         nick = pars[3]
                         
                         # Ignore empty messages.
-                        if not message: continue
+                        if not message:
+                            continue
                         
                         m = self._decodeMessage(message)
                         
@@ -471,57 +478,40 @@ class TinychatRoom():
                             message = TinychatMessage(m, nick, user, recipient, color)
                             user.lastMsg = message
                             user.color = color
-                            # UNTESTED: Removed .lower() from both sides.
-                            if recipient == self.nick.lower():
+                            
+                            if recipient == self.nick:
                                 message.pm = True
                                 if message.msg.startswith("/msg ") and len(message.msg.split(" ")) >= 2:
                                     message.msg = " ".join(message.msg.split(" ")[2:])
                                 
                                 self.onPM(user, message)
                             else:
-                                # Ignore public userinfo requests.
-                                if not message.msg.startswith("/userinfo "):
-                                    self.onMessage(user, message)
+                                self.onMessage(user, message)
                         continue
                     
+                    # Event for self joining?
                     if cmd == "registered":
-                        continue
-                    
-                    if cmd == "join":
-                        userID = pars[0]
-                        nick = pars[1]
+                        u = pars[0]
                         
                         # First join event is my own. Get my user object.
                         if not self.user:
-                            user = self._getUser(nick)
-                            if not user:    user = self._makeUser(nick)
-                            user.id = userID
-                            user.nick = nick
-                            # Apply user object to bot.
-                            self.user = user
-                            # cauth required to use privmsg().
-                            self.sendCauth(self.user.id)
+                            self.onJoin(u, myself=True)
+                        continue
+                    
+                    if cmd == "join":
+                        u = pars[0]
+                        
+                        # First join event is my own. Get my user object.
+                        if not self.user:
+                            self.onJoin(u, myself=True)
                             continue
                         
-                        self.onJoin(userID, nick)
+                        self.onJoin(u)
                         continue
                     
                     if cmd == "joins":
-                        if type(pars) is not list: continue
-                        
-                        # First item is like: u'#txt-tinychat^ROOMNAME'.
-                        pars = pars[1:]
-                        
-                        # Empty.
-                        if len(pars) <= 1: continue
-                        
-                        for i in range(0, len(pars), 2):
-                            userid = pars[i]
-                            nick = pars[i+1]
-                            
-                            user = self._getUser(nick)
-                            if not user:    user = self._makeUser(nick)
-                            user.id = userid
+                        for u in pars:
+                            self.onJoin(u, joins=True)
                         continue
                     
                     if cmd == "joinsdone":
@@ -584,7 +574,7 @@ class TinychatRoom():
                         nick = pars[1]
                         
                         user = self._getUser(nick)
-                        user.oper = True
+                        user.mod = True
                         self._chatlog(user.nick + " is oper.", True)
                         continue
                     
@@ -592,7 +582,7 @@ class TinychatRoom():
                         nick    = pars[1]
                         
                         user = self._getUser(nick)
-                        user.oper = False
+                        user.mod = False
                         self._chatlog(user.nick + " has lost their oper.", True)
                         continue
                     
@@ -606,10 +596,10 @@ class TinychatRoom():
                     
                     if cmd == "doublesignon":
                         try:
-                            self._chatlog("The account "+self.user.accountName+
+                            self._chatlog("The account "+self.user.account+
                                 " is already being used by: ["+pars[1]+","+pars[0]+"].", True)
                         except:
-                            self._chatlog("The account "+self.user.accountName+
+                            self._chatlog("The account "+self.user.account+
                                 " is already being used in this room.", True)
                         continue
                     
@@ -643,40 +633,8 @@ class TinychatRoom():
                         self._chatlog("onstatus: "+str(pars), True)
                         continue
                     
-                    if cmd == "account":
-                        userid = pars[0]["id"]
-                        account = pars[0]["account"]
-                        
-                        # User asked is not logged in.
-                        if account == "$noinfo" or userid == 0:
-                            continue
-                        
-                        self.onUserinfoReceived(userid, account)
-                        continue
-                    
-                    if cmd == "pros":
-                        for userid in pars:
-                            user = self._getUser(userid)
-                            
-                            if not user:
-                                self._chatlog('Failed to _getUser() in pros, userid: '+str(userid), True)
-                                continue
-                            
-                            user.pro = True
-                            self._chatlog(user.nick + " is on a pro account.", True)
-                        continue
-                    
-                    if cmd == "giftpoints":
-                        for i in range(0, len(pars), 3):
-                            userid = pars[i]
-                            points = pars[i+1]
-                            emptystring = pars[i+2] # Meaningless, eh.
-                            
-                            try:
-                                usr = self._getUser(userid)
-                                self._chatlog(usr.nick + " ("+str(userid)+") has "+str(points)+" gift points.", True)
-                            except:
-                                self._chatlog(str(userid)+" has "+str(points)+" gift points.", True)
+                    if cmd == "gift":
+                        self._chatlog("Gift: " + str(pars))
                         continue
                     
                     # Uncaught command! Ignore commands I don't care about.
@@ -824,12 +782,11 @@ class TinychatRoom():
             if not os.path.exists(d):
                 os.makedirs(d)
             
-            logfile = open(d + self.room + "_" + LOG_FILENAME_POSTFIX, "a")
-            try:
-                logfile.write(msg.encode("unicode-escape") + "\n")
-            except:
-                logfile.write(msg.encode("ascii", "replace") + "\n")
-            logfile.close()
+            with open(d + self.room + "_" + LOG_FILENAME_POSTFIX, "a") as logfile:
+                try:
+                    logfile.write(msg.encode("unicode-escape") + "\n")
+                except:
+                    logfile.write(msg.encode("ascii", "replace") + "\n")
     
     # Flushes into console, all queues messages, by addition order.
     def _chatlogFlush(self):
@@ -840,20 +797,43 @@ class TinychatRoom():
                 # traceback.print_exc()
                 print(msg.encode("ascii", "replace"))
         self.chatlogQueue = []
-    
+
 # Events.
-    # When a user joins, before supplying a nickname.
-    def onJoin(self, userID, nick):
-        user = self._getUser(nick)
-        if not user:
-            user = self._makeUser(nick)
+    # When a user joins, before supplying a nickname. First join() is self.
+    # Or from a the joins event, from users already in the room.
+    def onJoin(self, u, joins=False, myself=False):
+        user = self._makeUser(u.nick)
+        user.id = str(u.id)
+        user.account = u.account
+        user.mod = u.mod
+        user.pro = u.pro
+        user.own = u.own
+        user.gp = u.gp
+        user.alevel = u.alevel
+        user.bf = u.bf
+        user.lf = u.lf
         
-        user.id = userID
+        s = user.nick
+        if user.account:
+            s += " ("+user.account+")"
+        if user.mod:
+            s += " (MOD)"
+        if user.pro:
+            s += " (PRO)"
+        if user.gp:
+            s += " ("+str(user.gp)+" gp)"
         
-        self._chatlog(user.nick + " has joined.", True)
+        if myself:
+            self.user = user
+            # cauth required to use privmsg().
+            self.sendCauth(user.id)
+            self._chatlog("You have joined the room as "+s+".", True)
+            return
         
-        # Request account name.
-        self.requestUserinfo(user)
+        if joins:
+            self._chatlog(s + " is in the room.", True)
+        else:
+            self._chatlog(s + " has joined the room.", True)
         
         # Further handling.
         if SETTINGS['onJoinExtend']:
@@ -881,7 +861,8 @@ class TinychatRoom():
         self._sendCommand("banlist", [])
         
         # Verbose to room.
-        if SETTINGS["ReadyMessage"]: self.notice("I am now available. All systems go.")
+        if SETTINGS["ReadyMessage"]:
+            self.notice("I am now available. All systems go.")
     
     # When a user has left the room, for any reason.
     def onQuit(self, nick):
@@ -922,7 +903,7 @@ class TinychatRoom():
                 traceback.print_exc()
         
         # Further events must only come from opers!
-        if not user.oper:
+        if not user.mod:
             return
         
         # Track YT events.
@@ -932,13 +913,13 @@ class TinychatRoom():
     
     # Handles commands sent by PM to bot.
     def onPM(self, user, message):
-        self._chatlog("(pm) " + user.nick + ": " + message.msg)
+        msg = message.msg
         
         if msg == "/reported":
             reported = True
             acct = "Not Logged-In"
-            if user.accountName:
-                acct = user.accountName
+            if user.account:
+                acct = user.account
             self._chatlog("You have been REPORTED for abuse by "+
                 user.nick+" ("+str(user.id)+") ("+acct+")!", True)
         else:
@@ -956,8 +937,6 @@ class TinychatRoom():
     def onNickChange(self, old, new):
         # Update user object.
         user = self._getUser(old)
-        if not user:
-            user = self._makeUser(old)
         
         user.nick = new
         
@@ -980,43 +959,6 @@ class TinychatRoom():
                 self.sendYT(user)
             if SCqueue["start"] != 0:
                 self.sendSC(user)
-            # Make sure we got the account name.
-            if not user.accountName and self.user.nick != new:
-                self.requestUserinfo(user)
-    
-    # IRRELEVANT.
-    def onUserinfoRequest(self, user):
-        return
-        # self.sendUserInfo(user.nick, SETTINGS["FakeUser"]) # Or self.username
-    
-    def onUserinfoReceived(self, userid, account):
-        # Get user object.
-        user = self._getUser(userid)
-        if not user:
-            print("< Caught empty user at onUserinfoReceived: "+str(userid)+" >")
-            return
-        
-        # Ignore repeats.
-        if user.accountName == account:
-            return
-        
-        user.accountName = account
-        
-        # Not logged-in.
-        if user.accountName == "$noinfo": return
-        
-        self._chatlog(user.nick + " is logged in as " + account + ".", True)
-        
-        # Further handling.
-        if SETTINGS['onUserinfoReceivedExtend']:
-            try:
-                SETTINGS['onUserinfoReceivedExtend'](self, user, account)
-            except:
-                traceback.print_exc()
-        
-        # Mark admin.
-        if self.room == account:
-            user.admin = True
     
     # Get banlist, and forgive matching users from queue.
     def onBanlist(self, banlist):
@@ -1427,7 +1369,7 @@ class TinychatRoom():
     # Send a nameless notice message to room.
     # If not oper, default to say().
     def notice(self, msg):
-        if not self.user.oper:
+        if not self.user.mod:
             self.say(msg)
             return
         
@@ -1559,7 +1501,7 @@ class TinychatRoom():
             user = self._getUser(user)
             if not user: return False
         
-        if not override and user.oper:
+        if not override and user.mod:
             return "I do not ban moderators..."
         
         self._sendCommand("kick", [user.nick, user.id])
@@ -1914,6 +1856,8 @@ class TinychatRoom():
             else:
                 if raw.text.find("time=") >= 0:
                     self.roomTime = raw.text.split("time='")[1].split("'")[0]
+                if raw.text.find("roomtype=") >= 0:
+                    self.type = raw.text.split("roomtype='")[1].split("'")[0]
                 # For greenroom broadcast approval.
                 if raw.text.find("bpassword=") >= 0:
                     self.bpass = raw.text.split("bpassword='")[1].split("'")[0]
@@ -2286,9 +2230,8 @@ def verboseHTTP(string=None):
     else:
         writing = "w"
     
-    res = open("recaptcha.txt", writing)
-    res.write(string)
-    res.close()
+    with open("recaptcha.txt", writing) as res:
+        res.write(string)
 
 # Remove HTML tags from text.
 # Anything between < and >, including arrows.
@@ -2572,9 +2515,9 @@ def main():
                     user = user[1]
                     
                     text = "#"+str(i)+". " + str(user.nick) + " ("+str(user.id)+")"
-                    if user.accountName:
-                        text += " ["+str(user.accountName)+"]"
-                    if user.oper:
+                    if user.account:
+                        text += " ["+str(user.account)+"]"
+                    if user.mod:
                         text += " (Moderator)"
                     if user.admin:
                         text += " (Admin)"

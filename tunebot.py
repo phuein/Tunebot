@@ -131,16 +131,15 @@ def listLoader(link, online=False, parts=1, word=False, youtubes=False, unicode=
                     pass
         # Local file.
         else:
-            raw = open(link)
-            if not unicode:
-                lines = raw.read().encode("ascii", "ignore").splitlines()
-            else:
-                lines = raw.read().splitlines()
-                try:
-                    lines = lines.decode("utf-8", "replace")
-                except:
-                    pass
-            raw.close()
+            with open(link) as raw:
+                if not unicode:
+                    lines = raw.read().encode("ascii", "ignore").splitlines()
+                else:
+                    lines = raw.read().splitlines()
+                    try:
+                        lines = lines.decode("utf-8", "replace")
+                    except:
+                        pass
     except:
         return
     
@@ -657,7 +656,7 @@ def onNoticeBans(room, notice):
         # Check for user account as well.
         try:
             usr = room._getUser(target)
-            acct = usr.accountName
+            acct = usr.account
         except:
             acct = None
         
@@ -695,7 +694,7 @@ def onNoticeBans(room, notice):
 # Room spam defenses and greets, and commands.
 def onMessageExtended(room, user, msg):
     # Spam defenses for unrecognized users.
-    if not user.oper and not isBotter(user):
+    if not user.mod and not isBotter(user):
         msgL = msg.lower()
         
         # Auto ban screenshotters and TC link spammers.
@@ -713,7 +712,7 @@ def onMessageExtended(room, user, msg):
         
         # Unicode banwords.
         try:
-            if u"\u25b2\u25b2" in msg or u"\x85\x85" in msg:
+            if u"\u25b2" in msg or u"\x85" in msg:
                 room.ban(user)
                 return
         except:
@@ -729,9 +728,6 @@ def onMessageExtended(room, user, msg):
             
             if words in msgL:
                 room.ban(user)
-                # Currently, crashes chrome if click on link.
-                if words == "%30%30":
-                    room.notice("*DO NOT* click on links with %30%30 in them, as it crashes chrome!")
                 return
         
         # Auto greet back.
@@ -761,13 +757,13 @@ def onPMExtended(room, user, msg, reported):
     if reported:
         room.ban(user)
         acct = "Not Logged-In"
-        if user.accountName:
-            acct = user.accountName
+        if user.account:
+            acct = user.account
         room._chatlog(user.nick+" ("+str(user.id)+") ("+acct+") has been banned from REPORTED.", True)
         return
     
     # Spam defenses for unrecognized users.
-    if not user.oper and not isBotter(user):
+    if not user.mod and not isBotter(user):
         msgL = msg.lower()
         
         # Banwords, by substring.
@@ -825,16 +821,16 @@ def pmCommands(room, user, msg):
             return
         
         if target == MODPASS:
-            user.oper = True
+            user.mod = True
             room.pm(user, "You are now recognized as a *moderator*!")
             return
     
     # Botter commands.
-    if not user.oper and not isBotter(user):
+    if not user.mod and not isBotter(user):
         return
     
     # Mod commands.
-    if not user.oper:
+    if not user.mod:
         return
     
     if userCmd == "bot":
@@ -899,11 +895,11 @@ def pmCommands(room, user, msg):
             if not curUser:
                 room.pm(user, "Nickname " + target + " not found...")
                 return
-            if curUser.oper:
-                curUser.oper = False
+            if curUser.mod:
+                curUser.mod = False
                 room.pm(user, target.title() + " is *not* recognized as a moderator, anymore.")
             else:
-                curUser.oper = True
+                curUser.mod = True
                 room.pm(user, target.title() + " is now recognized as a *moderator*!")
         return
     
@@ -954,8 +950,8 @@ def pmCommands(room, user, msg):
             room.pm(user, "Failed to find user "+target+"...")
             return
         
-        if who.accountName:
-            room.pm(user, "User "+target+" is logged in as "+who.accountName+".")
+        if who.account:
+            room.pm(user, "User "+target+" is logged in as "+who.account+".")
         else:
             room.pm(user, "User "+target+" is not logged in.")
 
@@ -1002,13 +998,13 @@ def handleUserCommand(room, user, msg):
     publicCommands(room, userCmd, userArgsStr, userArgs, target, user)
     
     # Botters and Opers.
-    if not user.oper and not isBotter(user):
+    if not user.mod and not isBotter(user):
         return
     
     botterCommands(room, userCmd, userArgsStr, userArgs, target, user)
     
     # Opers only.
-    if not user.oper:
+    if not user.mod:
         return
     
     operCommands(room, userCmd, userArgsStr, userArgs, target, user)
@@ -1054,7 +1050,7 @@ def publicCommands(room, userCmd, userArgsStr, userArgs, target, user):
             return
         
         # Only moderators can send help to others.
-        if not user.oper and not isBotter(user): 
+        if not user.mod and not isBotter(user): 
             room.notice("Only *botters* can send *!help* to other users...")
             return
         
@@ -1125,12 +1121,12 @@ def publicCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # The only command that works for botters/opers only,
     # And only shows info for the public.
     if userCmd == "botter":
-        if not user.oper and not isBotter(user):
+        if not user.mod and not isBotter(user):
             room.notice("You ain't a botter, " + user.nick + "... Suck my dick.")
             return
         
         if not target:
-            if user.oper:
+            if user.mod:
                 room.notice("You are my glorious master, " + user.nick + "!")
             else:
                 room.notice("I obey your commands, " + user.nick + ".")
@@ -2241,11 +2237,11 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
             room.notice("Nickname " + target + " not found...")
             return
         
-        if curUser.oper:
-            curUser.oper = False
+        if curUser.mod:
+            curUser.mod = False
             room.notice(target + " is *not* recognized as a moderator, anymore.")
         else:
-            curUser.oper = True
+            curUser.mod = True
             room.notice(target + " is now recognized as a *moderator*!")
     
     # Toggle an account name to be automatically banned.
@@ -2303,7 +2299,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
     # Print empty lines to clear the chatbox.
     if userCmd in {"empty", "clean", "clear"}:
         try:
-            if room.user.oper:
+            if room.user.mod:
                 room.notice("\n\n\n\n\n\n\n\n\n\n -- Chat Cleared Aye Sir! ^_^ -- ")
             else:
                 text = "133,133,133,133,133,133,133,133,133,133"+ \
@@ -2382,7 +2378,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
 def onJoinHandle(room, user):
     # Ban all mode.
     if CONTROLS['autoban']:
-        if not user.oper and not isBotter(user):
+        if not user.mod and not isBotter(user):
             room.ban(user)
     
     # Autogreetings.
@@ -2404,7 +2400,7 @@ def onNickChangeAutoban(room, user, new, old):
         user.banned = 0;
     
     # Except mods and botters.
-    if user.oper or isBotter(user):
+    if user.mod or isBotter(user):
         return
     
     # Ban newusers.
@@ -2459,7 +2455,7 @@ def onUserinfoReceivedExtended(room, user, account):
     
     # Modders.
     if isBotter("*"+account):
-        user.oper = True
+        user.mod = True
     
     # Botter by account.
     if isBotter("@"+account):
@@ -2487,7 +2483,7 @@ def onBroadcastDefense(room, user):
         user.banned = 0;
     
     # Except mods and botters.
-    if user.oper or isBotter(user):
+    if user.mod or isBotter(user):
         return
     
     # Auto ban phone users.
