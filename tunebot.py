@@ -2543,7 +2543,7 @@ def onBroadcastDefense(room, user):
     
     # Ban & mark spammer and reset counts.
     if user.camSpam[0] == 2:
-        if t - user.camSpam[1] < 9:
+        if t - user.camSpam[1] < 15:
             room.ban(user)
             room._chatlog(user.nick+" ("+user.id+") has been banned for (2) cam spamming.", True)
             user.banned += 1
