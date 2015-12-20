@@ -1,7 +1,8 @@
 # Tunebot
 A friendly fork of several other bots (QBot, Pinychat), designed to assist Tinychat users and moderators.
 
-**Like the bot? Donate in Bitcoins: 1LoyRpNMVB85WkTLWLkn7g8iPgyaVBFHKf**
+**Like the bot? Donate in Bitcoins: 1LoyRpNMVB85WkTLWLkn7g8iPgyaVBFHKf**<br>
+***Support for the code/bot is per payment, only.***
 
 Acknowledgements:
 + notnola
