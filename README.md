@@ -8,6 +8,7 @@ Acknowledgements:
 + notnola
 + megaloler
 + qbot
++ Norm
 
 \* _(Somebody else or a fix? Tell me.)_
 
