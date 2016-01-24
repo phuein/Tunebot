@@ -44,21 +44,23 @@ The tinychat core module accepts these:
 - nick=NICK
 - user=USER
 - pass=PASS
-- ready=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Say something, when ready in the room.)
-- interactive=0/1 &nbsp;&nbsp;(Whether running from console or remotely.)
+- ready=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Say something, when ready in the room.)
+- interactive=0/1 &nbsp;&nbsp; (Whether running from console or remotely.)
 
 The tunebot module **adds** these **optional** arguments:
 
-- nick=NICK&nbsp;&nbsp;&nbsp;&nbsp;(Override.)
-- bot=0/1  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Whether bot starts active in listening to user commands.)
-- greet=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(A smart greeting algorithm.)
+- nick=NICK&nbsp;&nbsp;&nbsp;&nbsp; (Override.)
+- bot=0/1  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Whether bot starts active in listening to user commands.)
+- greet=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (A smart greeting algorithm.)
+- snap=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Autoban unknowns taking screenshots.)
+- private=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Autoban all unknowns on join.)
 
 **For example, run it with:** python tunebot.py room=myroom user=myuser pass=mypass nick=bot
 
 <br>
 ## Settings
 
-The top directory of the bot has a settings/ directory. In the code, you can see a lot of instructions come from simple .txt files in it.
+The top directory of the bot has a **settings/** directory. In the code, you can see a lot of instructions come from simple .txt files in it.
 
 The empty files in the settings/ directory expect **a link** to a TXT file format. For example, do "Export as TXT" in Google Docs, and copy the download URL from your browser downloads window.
 
