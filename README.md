@@ -49,7 +49,6 @@ The tinychat core module accepts these:
 
 The tunebot module **adds** these **optional** arguments:
 
-- nick=NICK&nbsp;&nbsp;&nbsp;&nbsp; (Override.)
 - bot=0/1  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Whether bot starts active in listening to user commands.)
 - greet=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (A smart greeting algorithm.)
 - snap=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Autoban unknowns taking screenshots.)
