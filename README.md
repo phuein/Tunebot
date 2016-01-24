@@ -53,7 +53,7 @@ The tunebot module **adds** these **optional** arguments:
 - bot=0/1  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Whether bot starts active in listening to user commands.)
 - greet=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (A smart greeting algorithm.)
 - snap=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Autoban unknowns taking screenshots.)
-- private=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Autoban all unknowns on join.)
+- private=0/1 &nbsp;&nbsp; (Autoban all unknowns on join.)
 
 **For example, run it with:** python tunebot.py room=myroom user=myuser pass=mypass nick=bot
 
