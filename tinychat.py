@@ -1,19 +1,34 @@
 #!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 
+# Coded in Sublime Text 3 beta, latest.
+
 from rtmp import rtmp_protocol
 
 import requests             # http://www.python-requests.org/
 requests.packages.urllib3.disable_warnings() # For python < 2.7.9
 
 import random
-import os
-import sys
+import os, sys, signal
 import traceback            # https://docs.python.org/2/library/traceback.html
 import time
+time.mstime = lambda: int(round(time.time() * 1000))    # Get current time in milliseconds.
 from urllib import quote, quote_plus    # Handles URLs.
 import json
 import re
+
+# Handle linux SIGTERM; cleanup.
+def signalHandler(signum, frame):
+    # Print all queued messages. Cleanup properly.
+    try:
+        room = ROOMS[0]         # Only main room.
+        room._chatlogFlush()
+        room.disconnect()
+    except:
+        pass
+    SETTINGS["Run"] = False
+    sys.exit()
+signal.signal(signal.SIGTERM, signalHandler)
 
 # Windows console fix, not necessary for everyone.
 try:
@@ -22,21 +37,60 @@ try:
 except:
     pass
 
-from socket import *
+import socket               # https://docs.python.org/2/library/socket.html
+import socks                # https://github.com/Anorov/PySocks 1.5.4
 
 import threading
 ROOMS = []                  # First room should always be the main room & thread.
 
 # Operation variables.
-SETTINGS_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings", "")
+try:
+    LOCAL_DIRECTORY     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
+except:
+    LOCAL_DIRECTORY     = ""
+# Holds further private modules and settings files.
+SETTINGS_DIRECTORY      = os.path.join(LOCAL_DIRECTORY, "settings", "")
+
+SETTINGS_FILE           = False  # Default to no settings file.
 
 # Delay before any (re)connection.
-DELAY = 15
+DELAY = 10
+
+# Returns a new internet socket().
+# Optionally reusable.
+def getSocket(reusable=False, keepalive=True):
+    s = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)   # Default values.
+    
+    # Looks like TC uses some MQTT thing. No idea.
+    # if keepalive:
+    #     s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    #     # Linux only.
+    #     try:
+    #         # Activate after seconds idle.
+    #         # Overrides value shown by sysctl net.ipv4.tcp_keepalive_time.
+    #         s.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, 15)   # socket.IPPROTO_TCP
+    #         # Ping interval.
+    #         # Overrides value shown by sysctl net.ipv4.tcp_keepalive_intvl.
+    #         s.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, 15)  # socket.IPPROTO_TCP
+    #         # Max fails.
+    #         # Overrides value shown by sysctl net.ipv4.tcp_keepalive_probes.
+    #         s.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, 4)     # socket.IPPROTO_TCP
+    #     except:
+    #         pass
+    
+    if reusable:
+        # The SO_REUSEADDR flag tells the kernel to reuse a local socket
+        # in TIME_WAIT state, without waiting for its natural timeout to expire.
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    
+    return s
 
 # Global bot settings.
+# This includes everything from the settings file!
 SETTINGS = {
     # Client controls.
     "Run":                  True,           # Let a thread ask to exit process loop.
+    "ReconnectOnBan":       False,          # Reconnect when banned.
     "DebugConsole":         False,
     "DebugLog":             False,
     "ChatLog":              True,
@@ -44,6 +98,13 @@ SETTINGS = {
     "LastPM":               None,           # The nickname that last got a msg PM from bot.
     "IP":                   None,
     "PORT":                 None,
+    "PROXY":                None,           # Optional proxy option to use, proxy or "list".
+    "SOCK":                 getSocket(),    # Connection socket used for all actions.
+    "Recaptcha":            "",             # The text file holding recaptcha info.
+    "NoRecaptcha":          False,          # Don't bother with reCaptcha.
+    "ReceiveCams":          False,          # Whether to receive webcam streams from other users.
+    "SCKey":                None,
+    "YTKey":                None,
     # Optional event handling extensions, for bots.
     "onJoinExtend":             None,
     "onJoinsdoneExtend":        None,
@@ -55,32 +116,209 @@ SETTINGS = {
     "onUserinfoReceivedExtend": None,
     "onBanlistExtend":          None,
     "onBroadcastExtend":        None,
-    "cauthBypass":              None,
     "disconnectExtend":         None,
     # Thread control.
     "LastRoomID":           0,
-    "Reconnecting":         False,
     "SendCommands":         True,           # Disable sending messages to room.
     "KeepAlive":            None,           # The keepalive thread.
     # Input control.
     "RunningOnWindows":     False,
     "InteractiveConsole":   True,           # Has interactive console for user input.
-    "UserInput":            None,
+    "UserInput":            None,           # None means msvcrt() lib isn't loaded.
     "UserInputLast":        "",
-    # Bot extra settings and controls.
-    "ReadyMessage":         False,
-    "FakeUser":             "Bot",          # Fake account name for /userinfo requests.
-    "AutoOp":               None,
-    "ProHash":              None,
     # Extra settings.
     "BanNewusers":          False,
     "MaxCharsMsg":          110,
     "MaxCharsPM":           90,
-    "MaxCharsNotice":       160
+    "MaxCharsNotice":       160,            # 360 total max per /notice.
+    "Command":              False           # Execute command at joinsdone() and leave.
 }
 
+# The Login and RTMP connections arguments.
+CONN_ARGS = {
+    "room": "",
+    "nickname": "",
+    "username": "",
+    "password": ""
+}
+
+# Get connection arguments from command-line arguments.
+try:
+    if len(sys.argv) == 1:
+        raise Exception("No arguments given to tinychat module...\n")
+    
+    # Each item is a word, unless surrounded by "quotes".
+    for item in sys.argv:
+        parts = item.split("=", 1)
+        
+        try:
+            # All names are lower-case.
+            name = parts[0].lower()
+        except:
+            # Must have a name.
+            continue
+        
+        try:
+            val = parts[1]
+        except:
+            # Value can be empty.
+            val = ""
+        
+        if name == "room":
+            CONN_ARGS["room"] = val
+        
+        elif name in {"nick", "nickname"}:
+            CONN_ARGS["nickname"] = val
+        
+        elif name in {"user", "username"}:
+            CONN_ARGS["username"] = val
+        
+        elif name in {"pass", "password"}:
+            CONN_ARGS["password"] = val
+        
+        # Using an interactive console or not, like command prompt.
+        elif name == "interactive":
+            try:
+                SETTINGS["InteractiveConsole"] = bool(int(val))
+            except:
+                print("Argument INTERACTIVE must be 0 or 1, only.")
+        
+        # Override main room IP.
+        elif name == "ip":
+            SETTINGS["IP"] = val
+        # Override main room PORT.
+        elif name == "port":
+            try:
+                SETTINGS["PORT"] = int(val)
+            except:
+                print("Argument PORT must be an integer number.")
+        
+        # All the module's connections go through proxy.
+        elif name == "proxy":
+            SETTINGS["PROXY"] = val
+        
+        elif name == "command":
+            try:
+                SETTINGS["Command"] = bool(int(val))
+            except:
+                SETTINGS["Command"] = val
+        
+        # Reconnect on ban.
+        elif name == "reonban":
+            try:
+                SETTINGS["ReconnectOnBan"] = bool(int(val))
+            except:
+                print("Argument REONBAN must be 0 or 1, only.")
+        
+        elif name == "norecaptcha":
+            try:
+                SETTINGS["NoRecaptcha"] = bool(int(val))
+            except:
+                print("Argument NORECAPTCHA must be 0 or 1, only.")
+        
+        elif name == "settings":
+            try:
+                SETTINGS_FILE = bool(int(val))
+            except:
+                SETTINGS_FILE = val
+            print("Settings file set: "+str(SETTINGS_FILE))
+except Exception as e:
+    print(e)
+
+# If command-line argument for settings is True, try to find by room name.
+if SETTINGS_FILE is True:
+    s = "settings_"+CONN_ARGS["room"]+".txt"
+    if os.path.isfile(LOCAL_DIRECTORY + s):
+        SETTINGS_FILE = s
+
+# Append and override further settings from file.
+# Supports unicode.
+try:
+    if type(SETTINGS_FILE) not in {str, unicode}:
+        raise Exception()
+    
+    with open(LOCAL_DIRECTORY + SETTINGS_FILE) as f:
+        data = f.read().splitlines()
+    
+    # Handle unicode.
+    try:
+        lines = lines.decode("utf-8", "replace")
+    except:
+        pass
+    
+    # Convert to dict{}.
+    d = {}
+    for line in data:
+        # Remove trailing whitespaces.
+        line = line.strip()
+        # Skip comments and empty lines.
+        if line.startswith("//") or line == "":
+            continue
+        
+        words = line.split()
+        name = words.pop(0)
+        value = " ".join(words)
+        
+        # Optionally parse True/False.
+        if value == "True":
+            value = True
+        elif value == "False":
+            value = False
+        
+        # Optionally parse as number.
+        elif value.startswith("###"):
+            try:
+                value = float(value)
+            except:
+                pass
+        elif value.startswith("##"):
+            try:
+                value = int(value)
+            except:
+                pass
+        
+        # Optional CONN_ARGS. Doesn't override command-line arguments.
+        if name in CONN_ARGS and not CONN_ARGS[name] and name != "room":
+            CONN_ARGS[name] = value
+        else:
+            # Override into SETTINGS.
+            d[name] = value
+    
+    # Apply.
+    SETTINGS.update(d)
+except Exception as e:
+    if str(e):
+        print "Failed to load SETTINGS from "+SETTINGS_FILE+"!"
+        print str(e)
+
+# Media handling - audio & video streams.
+try:
+    from settings import media as MEDIA
+except:
+    MEDIA = None
+
+# Access bypass.
+try:
+    from settings import bypassAccess as BYPASS_ACCESS
+except:
+    BYPASS_ACCESS = None
+
+# Captcha bypass.
+try:
+    from settings import bypass_captcha as BYPASS_CAPTCHA
+except:
+    BYPASS_CAPTCHA = None
+
+# Proxy module.
+try:
+    from settings import proxy as PROXY_MODULE
+except:
+    PROXY_MODULE = None
+    PROXY = None
+
 # Running on a Windows machine, or otherwise.
-if os.name == "nt": SETTINGS["RunningOnWindows"] = True
+if os.name == "nt":
+    SETTINGS["RunningOnWindows"] = True
 
 # Console input control.
 if SETTINGS["RunningOnWindows"]:
@@ -93,71 +331,6 @@ else:
     # For linux...
     pass
 
-# The Login and RTMP connections arguments.
-CONN_ARGS = {
-    "room": "",
-    "nickname": "Bot",
-    "username": "",
-    "password": ""
-}
-
-# Get connection arguments from command-line arguments:
-# room=[tinychat*]ROOM, nick=NICK, user=USER, pass=PASS,
-# ready=0/1, interactive=0/1, ip=IP, port=PORT.
-try:
-    if len(sys.argv) == 1:
-        raise Exception("No arguments given to tinychat module...\n")
-    
-    # Default single argument is PASSWORD.
-    if len(sys.argv) == 2 and sys.argv[1].find("=") == -1:
-        CONN_ARGS["username"] = "tunebot"
-        CONN_ARGS["password"] = sys.argv[1]
-    else:
-        for item in sys.argv:
-            match = item.lower()
-            
-            if match.find("room=") == 0:
-                val = item.split("=")[1]
-                # Allow spaced room names.
-                if val[0] == '"':
-                    try:    val = val.split('"')[1]
-                    except: pass
-                CONN_ARGS["room"] = val
-                continue
-            
-            if match.find("nick=") == 0 or match.find("nickname=") == 0:
-                val = item.split("=")[1]
-                CONN_ARGS["nickname"] = val
-                continue
-            
-            if match.find("user=") == 0 or match.find("username=") == 0:
-                val = item.split("=")[1]
-                CONN_ARGS["username"] = val
-                continue
-            
-            if match.find("pass=") == 0 or match.find("password=") == 0:
-                val = item.split("=")[1]
-                CONN_ARGS["password"] = val
-                continue
-            
-            if match.find("ready=") == 0:
-                val = item.split("=")[1]
-                try:
-                    SETTINGS["ReadyMessage"] = bool(int(val))
-                except:
-                    print("Argument READY must be 0 or 1, only.")
-                continue
-            
-            if match.find("interactive=") == 0:
-                val = item.split("=")[1]
-                try:
-                    SETTINGS["InteractiveConsole"] = bool(int(val))
-                except:
-                    print("Argument INTERACTIVE must be 0 or 1, only.")
-                continue
-except Exception as e:
-    print(e)
-
 # Time formats.
 get_current_time = lambda: time.strftime("%H.%M.%S")
 current_date = time.strftime("%d.%m.%Y")
@@ -169,18 +342,6 @@ except:
     LOG_BASE_DIRECTORY = "logs/"
 
 LOG_FILENAME_POSTFIX = current_date + "_" + time.strftime("%H.%M.%S") + ".log"
-
-# Handle debug verbosity.
-def debugPrint(msg, room="unknown_room"):
-    msg = msg.encode('ascii', 'ignore')
-    if SETTINGS["DebugConsole"]:
-        print("DEBUG: " + msg)
-    if SETTINGS["DebugLog"]:
-        d = LOG_BASE_DIRECTORY
-        if not os.path.exists(d): os.makedirs(d)
-        
-        with open(d + room + "_debug.log", "a") as logfile:
-            logfile.write(msg + "\n")
 
 TINYCHAT_COLORS = {
     'blue'       : '#1965b6',
@@ -204,24 +365,6 @@ TINYCHAT_COLORS = {
     'orange'     : '#fba91a'
 }
 
-# Get the SC Client ID to track songs.
-SCkey = ''
-filename = SETTINGS_DIRECTORY + "scclientid.txt"
-try:
-    with open(filename) as f:
-        SCkey = f.read().strip()
-except:
-    print("Failed to load the SoundCloud API key from " + filename + ".")
-
-# Get the YT API Key to track videos.
-YTkey = ''
-filename = SETTINGS_DIRECTORY + "ytapikey.txt"
-try:
-    with open(filename) as f:
-        YTkey = f.read().strip()
-except:
-    print("Failed to load the Youtube API key from " + filename + ".")
-
 # Handle tracking videos and songs.
 YTqueue = {
     "history":          [],     # Videos played by bot, only.
@@ -243,6 +386,38 @@ SCqueue = {
     "paused":           0       # The time() when paused.
 }
 
+# Proxies for spoofing the connection - requests and RTMP. Optional.
+# Turns PROXY into an object with methods, or to None on failure.
+try:
+    # Need both module and a proxy or list.
+    if not PROXY_MODULE or not SETTINGS["PROXY"]:
+        raise Exception()
+    
+    # Either a given .txt file, single proxy, or nothing.
+    if SETTINGS["PROXY"].endswith(".txt"):
+        # List of proxies.
+        try:
+            with open(SETTINGS_DIRECTORY + SETTINGS["PROXY"]) as f:
+                d = f.read().splitlines()
+        except:
+            raise Exception("Failed to open proxies list from "+SETTINGS["PROXY"]+"...")
+        proxies = filter(lambda x: x.strip() and not x.startswith("//"), d)
+    elif SETTINGS["PROXY"]:
+        # Single proxy.
+        proxies = SETTINGS["PROXY"]
+    
+    # Set as object from class. Proxies are shuffled, and made a tuple (not list!)
+    l = threading.Lock()
+    PROXY = PROXY_MODULE.proxy(proxies, requests, getSocket, l, loopOver=True)
+    # Invalid single proxy.
+    if not PROXY.proxies:
+        raise Exception("Proxy "+SETTINGS["PROXY"]+" is not a valid proxy format! "+
+            "Using local connection...")
+except Exception as e:
+    PROXY = None
+    if str(e):
+        print str(e)
+
 # Format Room and PM messages.
 class TinychatMessage():
     def __init__(self, msg, nick, user=None, recipient=None, color=None, pm=False):
@@ -252,7 +427,7 @@ class TinychatMessage():
         self.recipient = recipient
         self.color = color
         self.pm = pm
-
+    
     def printFormatted(self):
         if self.pm:
             pm = "(PM) "
@@ -262,36 +437,40 @@ class TinychatMessage():
 
 # User properties object.
 class TinychatUser():
-    def __init__(self, nick="", userID="", color=""):
+    def __init__(self, userID=0, nick="", color=""):
+        self.joinTime = time.time()
+        
         self.nick = nick
-        self.id = userID
+        self.id = userID            # int()
         self.color = color
         self.lastMsg = ""
         self.mod = False
         self.admin = False
         self.account = ""
-        self.broadcasting = False   # Can't tell if stopped broadcasting.
-        self.device = ""            # Tinychat identifies Android & iPhone users.
-        self.pro = False
         
-        self.lf = False             # ???
-        self.own = False            # ???
+        self.broadcasting = False   # Can't tell if stopped broadcasting, unless closed by mod.
+        self.device = ""            # Tinychat identifies Android & iPhone users.
+        self.pro = False            # User is on a Pro account.
+        self.lurking = False        # User is on "guest" mode, and can't send anything to room.
+        
         self.gp = 0                 # Giftpoints. int()
-        self.alevel = ""            # ???
-        self.bf = False             # ???
+        self.alevel = ""            # Gifts Achievement level (image url: http://tinychat.com/gifts/images/achievement/new/star_y_32.png)
 
 # A single room connection.
 class TinychatRoom():
+    # self.sock is None if using a bad socket().
+    # Each connection has its own room() with socket(), by design.
     def __init__(self, room, nick=None, username=None, passwd=None, roomPassword=None,
-        instructions=None, printOverride=None, doConnect=None, replaceIndex=None, 
-        noRecaptcha=None):
+        instructions=None, printOverride=None, doConnect=None,
+        replaceIndex=None, autoBot=None, noRecaptcha=None):
         # Put reference to room, in the list.
-        if replaceIndex:
+        if replaceIndex is not None:
             ROOMS.insert(replaceIndex, self)
         else:
             ROOMS.append(self)
         
-        self.noRecaptcha = noRecaptcha
+        self.autoBot = autoBot
+        self.noRecaptcha = SETTINGS["NoRecaptcha"]
         
         # Optional room type for RTMP connect().
         if room.find("*") >= 0:
@@ -307,9 +486,9 @@ class TinychatRoom():
             self.site = "tinychat"
             self.room = room
         
-        self.type = "show"                                      # Default, but also check in API.
+        self.type = "show"              # Default, but also check in API.
         
-        self.cookies = {}                                       # Holds requests session cookies.
+        self.cookies = {}               # Holds requests session cookies.
         
         if username == None:
             self.username = ""
@@ -329,23 +508,40 @@ class TinychatRoom():
         self.chatLogging = SETTINGS["ChatLog"]
         self.chatlogQueue = []
         
-        self.s = requests.session()
-        self.__authHTTP()
+        # Optionally filled in getRTMPInfo().
+        self.bpass = None
+        self.greenroom = False
+        self.timecookie = None
         
+        # Each room() has its own socket(), representing an IP address.
+        self.sock       = None
+        self.proxies    = None
+        self.proxy      = None
+        self.PROXY      = PROXY         # Modular access.
+        self.getSocket  = getSocket     # ...
+        self.setSocket()                # Sets the above variables, or not on failure.
+        
+        try:
+            if not self.sock:
+                raise Exception("Bad socket from setSocket()...")
+            
+            self.s = requests.session()
+            self.authHTTP()
+            self.tcurl = self.getRTMPInfo()
+            self.doTimestampRecaptcha()         # Sets self.timecookie, as well.
+        except Exception as e:
+            # traceback.print_exc()
+            # Failed socket. Probably bad proxy.
+            self.reconnect()
+            return
+        
+        # Work bot - advertising.
+        self.instructions = instructions
         # Connect immediately, after initialization.
         self.doConnect = doConnect
         # Ignore print queueing, and print immediately.
         self.printOverride = printOverride
         
-        self.roomPage = self.__getRoomPage(room)                # The room's HTML content.
-        self.autoop = self.__getAutoOp(room)
-        self.prohash = self.__getProHash(room)
-        
-        # Optionally filled in __getRTMPInfo().
-        self.bpass = None
-        self.greenroom = False
-        
-        self.tcurl = self.__getRTMPInfo()
         tcurlsplits = self.tcurl.split("/tinyconf")             # >>['rtmp://127.0.0.1:1936', '']
         tcurlsplits1 = self.tcurl.split("/")                    # >>['rtmp:', '', '127.0.0.1:1936', 'tinyconf']
         tcurlsplits2 = self.tcurl.split(":")                    # >>['rtmp', '//127.0.0.1', '1936/tinyconf']
@@ -356,80 +552,88 @@ class TinychatRoom():
         self.port = int(tcurlsplits3[1])
         self.app = tcurlsplits1[3]                              # Defining Tinychat FMS App
         self.pageurl = "http://tinychat.com/"+room              # Definging Tinychat's Room HTTP URL
-        self.swfurl = "http://tinychat.com/embed/Tinychat-11.1-1.0.0.0649.swf?version=1.0.0.0649/[[DYNAMIC]]/8" #static
-        self.flashVer = "WIN 19,0,0,245"                        # static
-        self.pc = "Desktop 1.0.0.0649"
+        self.swfurl = "http://tinychat.com/embed/Tinychat-11.1-1.0.0.0651.swf?version=1.0.0.0651/[[DYNAMIC]]/8" #static
+        self.flashVer = "WIN 20,0,0,267"                        # static
+        self.pc = "Desktop 1.0.0.0651"
         
         # Overrides.
-        if SETTINGS["IP"]: self.ip = SETTINGS["IP"]
-        if SETTINGS["PORT"]: self.port = int(SETTINGS["PORT"])
-        
-        # Check Recaptcha, ask to fill if needed, and set cauthTimestamp.
-        self.doTimestampRecaptcha()
+        if SETTINGS["IP"]:
+            self.ip = SETTINGS["IP"]
+        if SETTINGS["PORT"]:
+            self.port = int(SETTINGS["PORT"])
         
         self.color = TINYCHAT_COLORS["black"]
         self.topic = ""
-        self.users = {}     # self.users[NICK] = USER OBJECT
-        self.user = None    # Holds the bot's user object.
-        self.nextFails = 0  # Count .next() failures, to avoid infinite loop.
+        self.users = {}             # self.users[NICK] = USER OBJECT
+        self.user = None            # Holds the bot's user object.
+        self.nextFails = 0          # Count .next() failures, to avoid infinite loop.
         self.banlist = []
         self.forgives = []
+        self.onCam = False
+        self.keepAlive = True       # Toggles on disconnect() and connect().
         
-        # Connect immediately, after finished initialization.
+        # Avoid sending more than 10 msgs per 1 second.
+        self.limitMsgs = {
+            "msgs":     0,
+            "first":    time.time()
+        }
+        
+        # Connect immediately, after finishing initialization.
         if self.doConnect:
             self.connect()
     
-# Core connectivity functions.
+    # Core connectivity functions.
     def connect(self, force=None):
-        self._chatlog("Connecting to " + self.room + "...", True)
+        self._chatlog("Connecting to "+self.room+"...", True)
         
         if not self.connected or force:
-            debugPrint("\n === NEW CONNECTION ===", self.room)
-            debugPrint("Server: " + str(self.ip), self.room)
-            debugPrint("Port: " + str(self.port), self.room)
-            debugPrint("Tinychat URL: " + str(self.tcurl), self.room)
-            debugPrint("URL: " + str(self.pageurl), self.room)
-            debugPrint("App: " + str(self.app), self.room)
-            debugPrint("Room: " + self.room, self.room)
-            debugPrint("AutoOp: " + str(self.autoop), self.room)
-            debugPrint("Time Cookie: " + str(self.timecookie), self.room)
-            self.connection = rtmp_protocol.RtmpClient(self.ip, self.port, self.tcurl, 
-                self.pageurl, self.swfurl, self.app, self.flashVer,
-                self.username, self.site, self.room, self.pc, self.type, self.timecookie)
             try:
+                self.connection = rtmp_protocol.RtmpClient(self.ip, self.port, self.tcurl,
+                    self.pageurl, self.swfurl, self.app, self.flashVer, self.sock,
+                    self.username, self.site, self.room, self.pc, self.type, self.timecookie)
+                
                 self.connection.connect()
                 self.connected = True
+                self.keepAlive = True
                 SETTINGS["Reconnecting"] = False
-                self._chatlog(" === Connected to " + self.room + " === ", True)
+                
+                if self.proxy:
+                    if type(PROXY.proxies) is tuple:
+                        p = self.proxy+" ("+PROXY.getCountString(self.proxyIndex)+")"
+                    else:
+                        p = self.proxy
+                else:
+                    p = ""
+                self._chatlog("== Connected "+(self.nick if self.nick else "bot")+" == "+p)
+                
+                printFile(self.room+".connected", "connected", local=True)
                 # Start listening to server.
                 self._listen()
             except Exception as e:
-                traceback.print_exc()
+                # traceback.print_exc()
                 self.connected = False
-                self._chatlog("Failed to connect to " + self.room + "...", True)
+                self._chatlog("Failed to connect! Reconnecting...", True)
+                self.reconnect()
     
     def _listen(self):
         while self.connected and not self.reconnecting:
             # Read next possible packet.
             try:
                 msg = self.connection.reader.next()
-            except timeout:
+            except socket.timeout:
                 # Only applies for the connect() attempt.
-                if ROOMS[0] == self:
-                    self.reconnect()
-                else:
-                    self.disconnect()
+                self.disconnect()
+                self._chatlog("Socket().timeout! Reconnecting...", True)
+                self.reconnect()
                 break
             except:
                 self.nextFails += 1
                 self._chatlog("Failed to read next() packet...", True)
                 # Kill after consecutive fails.
                 if self.nextFails == 5:
-                    # Main room reconnects immediately.
-                    if ROOMS[0] == self:
-                        self.reconnect()
-                    else:
-                        self.disconnect()
+                    self.disconnect()
+                    self._chatlog("Can't read next()! Reconnecting...", True)
+                    self.reconnect()
                     break
             else:
                 # Reset count on success.
@@ -437,9 +641,17 @@ class TinychatRoom():
             
             # Handle RTMP packets.
             try:
-                debugPrint("SERVER: " + str(msg), self.room)
+                # if msg['msg'] == rtmp_protocol.DataTypes.USER_CONTROL:
+                #     self._chatlog("USER CONTROL "+str(msg['event_type'])+" "+str(msg['event_data']), True)
                 
-                if msg['msg'] == rtmp_protocol.DataTypes.COMMAND:
+                if msg['msg'] == rtmp_protocol.DataTypes.VIDEO_MESSAGE:
+                    try:
+                        pass
+                        # self.videoDatas[msg['streamid']].append(msg['control'], msg['video'])
+                    except:
+                        pass
+                
+                elif msg['msg'] == rtmp_protocol.DataTypes.COMMAND:
                     pars = msg['command']
                     cmd = pars[0].encode("ascii", "ignore").lower() # pars[0].encode("ascii", "ignore").lower()
                     
@@ -473,7 +685,8 @@ class TinychatRoom():
                             user = self._getUser(nick)
                             if not user:
                                 print("< Caught empty user at privmsg: "+nick+" >")
-                            if not user:    user = self._makeUser(nick)
+                                print str(message)
+                                continue
                             
                             message = TinychatMessage(m, nick, user, recipient, color)
                             user.lastMsg = message
@@ -493,20 +706,25 @@ class TinychatRoom():
                     if cmd == "registered":
                         u = pars[0]
                         
-                        # First join event is my own. Get my user object.
-                        if not self.user:
-                            self.onJoin(u, myself=True)
+                        # Get my user object.
+                        self.onJoin(u, myself=True)
                         continue
                     
                     if cmd == "join":
                         u = pars[0]
                         
-                        # First join event is my own. Get my user object.
-                        if not self.user:
-                            self.onJoin(u, myself=True)
-                            continue
-                        
                         self.onJoin(u)
+                        continue
+                    
+                    if cmd == "topic":
+                        topic = pars[0]
+                        if not self.topic:
+                            # On join.
+                            msg = "Topic: "
+                        else:
+                            msg = "Topic set as: "
+                        self.topic = topic
+                        self._chatlog(msg + self.topic, True)
                         continue
                     
                     if cmd == "joins":
@@ -518,18 +736,22 @@ class TinychatRoom():
                         self.onJoinsdone()
                         continue
                     
-                    if cmd == "topic":
-                        topic = pars[0]
-                        self.topic = topic
-                        self._chatlog("Topic set to: " + self.topic, True)
+                    if cmd == "deop":
+                        userid  = int(pars[0])
+                        nick    = pars[1]
+                        
+                        user = self._getUser(userid)
+                        user.mod = False
+                        self._chatlog(user.nick + " have lost their oper.", True)
                         continue
                     
                     if cmd == "nick":
-                        old = pars[0]
-                        new = pars[1]
+                        old     = pars[0]
+                        new     = pars[1]
+                        userid  = int(pars[2])
                         
                         # Replaces reference in room object, and handles event.
-                        self.onNickChange(old, new)
+                        self.onNickChange(old, new, userid)
                         continue
                     
                     if cmd == "notice":
@@ -542,13 +764,12 @@ class TinychatRoom():
                         continue
                     
                     if cmd == "avons":
-                        if type(pars) is not list: continue
-                        
                         # First item is None.
                         pars = pars[1:]
                         
                         # Empty.
-                        if len(pars) <= 1: continue
+                        if not pars:
+                            continue
                         
                         for i in range(0, len(pars), 2):
                             userid = pars[i]
@@ -559,31 +780,16 @@ class TinychatRoom():
                     
                     if cmd == "quit":
                         nick = pars[0]
+                        userid = int(pars[1])
                         
-                        self.onQuit(nick)
+                        self.onQuit(nick, userid)
                         continue
                     
                     if cmd == "kick":
                         userID = pars[0]
                         nick = pars[1]
                         
-                        self._chatlog(nick + " ("+userID+") has been banned.", True)
-                        continue
-                    
-                    if cmd == "oper":
-                        nick = pars[1]
-                        
-                        user = self._getUser(nick)
-                        user.mod = True
-                        self._chatlog(user.nick + " is oper.", True)
-                        continue
-                    
-                    if cmd == "deop":
-                        nick    = pars[1]
-                        
-                        user = self._getUser(nick)
-                        user.mod = False
-                        self._chatlog(user.nick + " has lost their oper.", True)
+                        self.onBanned(userID, nick)
                         continue
                     
                     if cmd == "banlist":
@@ -591,7 +797,7 @@ class TinychatRoom():
                         continue
                     
                     if cmd == "banned":
-                        self._chatlog("Bot just got banned!!", True)
+                        self.onBanned(bot=True)
                         continue
                     
                     if cmd == "doublesignon":
@@ -629,8 +835,23 @@ class TinychatRoom():
                         self._chatlog(str(pars), True)
                         continue
                     
+                    if cmd == "_result":
+                        pars = msg['command'][1:]
+                        # self._chatlog("_result: "+str(pars))
+                        streamID = pars[0]
+                        try:
+                            self.onResult(streamID)
+                        except:
+                            pass
+                        continue
+                    
                     if cmd == "onstatus":
-                        self._chatlog("onstatus: "+str(pars), True)
+                        # self._chatlog("onstatus: "+str(pars), True)
+                        statusObj = pars[0]
+                        try:
+                            self.onStatus(statusObj)
+                        except:
+                            pass
                         continue
                     
                     if cmd == "gift":
@@ -647,6 +868,7 @@ class TinychatRoom():
     def disconnect(self):
         if self.connected:
             self.connected = False
+            # Flush all chat messages in backlog.
             self._chatlogFlush()
             try:
                 self.connection.socket.shutdown(1)
@@ -655,8 +877,11 @@ class TinychatRoom():
                 self._chatlog("Failed to gracefully disconnect...", True)
             self._chatlog("=== Disconnected ===", True)
             
-            try: ROOMS.pop(ROOMS.index(self))
-            except: pass
+            # Delete recaptcha file, in case closed during wait loop.
+            printFile(SETTINGS["Recaptcha"], local=True)
+            
+            # Delete connection file.
+            printFile(self.room+".connected", local=True)
             
             # Instructions or further handling.
             if SETTINGS['disconnectExtend']:
@@ -669,56 +894,92 @@ class TinychatRoom():
     def reconnect(self):
         # Setup new repeat connection.
         SETTINGS["Reconnecting"] = True
+        self.keepAlive = False
         
         # Keep to index in ROOMS.
-        try:    i = ROOMS.index(self)
-        except: i = None
+        try:
+            i = ROOMS.index(self)
+        except:
+            i = None
         
         # Close previous connection.
         self.disconnect()
         
-        time.sleep(DELAY)
+        # Remove room from list.
+        ROOMS.remove(self)
         
-        room = TinychatRoom(CONN_ARGS["room"], self.nick, 
-            CONN_ARGS["username"], CONN_ARGS["password"], replaceIndex=i)
+        try:
+            nick = self.user.nick
+        except:
+            nick = self.nick
         
-        thread = threading.Thread(target=room.connect, args=())
-        thread.daemon = True
-        thread.start()
+        # Make new room with new proxy, with a new socket().
+        t = threading.Thread(target=makeRoom, args=(nick, i,))
+        t.daemon = True
+        t.start()
     
-    # Adds a new user from nickname.
-    # Returns the new user object.
-    def _makeUser(self, nick):
-        self.users[nick] = TinychatUser(nick=nick)
-        return self.users[nick]
+    # Sets a local or proxified socket, or None.
+    # Sets: self.sock. Optionally: self.proxies, self.proxy.
+    def setSocket(self):
+        self.sock = getSocket()
     
-    # Gets an existing user by nick or id number,
-    # or returns False if not found.
-    def _getUser(self, identifier):
-        if type(identifier) in [str, unicode]:
-            try:
-                return self.users[identifier]
-            except:
-                pass
-        elif type(identifier) is int:
+    # Makes a new user from userid, and adds it to self.users.
+    # Return the new user object.
+    def _makeUser(self, userid):
+        user = TinychatUser(userID=userid)
+        self.users[userid] = user
+        return user
+    
+    # Gets an existing user by userid or nickname,
+    # or optionally by account name.
+    # Return False if not found.
+    def _getUser(self, identifier, account=False):
+        # By account name.
+        if account:
             for user in self.users.values():
+                if user.account == identifier:
+                    return user
+        else:
+            if type(identifier) is int:
+                # By userid.
                 try:
-                    if int(user.id) == identifier:
-                        return user
+                    user = self.users[identifier]
+                    return user
                 except:
-                    self._chatlog('_getUser found user with invalid user.id: '+str(user), True)
-                    traceback.print_exc()
+                    pass
+            else:
+                # By nickname.
+                for user in self.users.values():
+                    if user.nick == identifier:
+                        return user
+        
         # No match.
         return False
     
-    # Removes an existing user by nick from the bot listing,
-    # or False if user doesn't exist.
-    def _deleteUser(self, nick):
-        if nick not in self.users:
-            return False
+    # Removes an existing user by userid or nickname,
+    # and return True, or False if user doesn't exist.
+    def _deleteUser(self, identifier):
+        if type(identifier) is int:
+            # By userid.
+            try:
+                del self.users[identifier]
+                return True
+            except:
+                pass
+                # self._chatlog("< Tried to _deleteUser from unavailable userid: "+str(identifier)+" >", True)
         else:
-            del self.users[nick]
-            return True
+            # By nickname.
+            for user in self.users.values():
+                if user.nick == identifier:
+                    try:
+                        del self.users[user.id]
+                        return True
+                    except:
+                        pass
+                        # self._chatlog("< Tried to _deleteUser from unavailable userid: "+str(identifier)+" >", True)
+        
+        # No match.
+        return False
     
     # Returns a unicode string.
     def _decodeMessage(self, msg):
@@ -745,12 +1006,27 @@ class TinychatRoom():
         return ",".join(msg2)
     
     def _sendCommand(self, cmd, pars=[]):
-        if not SETTINGS["SendCommands"]: return
+        if not SETTINGS["SendCommands"]:
+            return
         
         msg = {"msg": rtmp_protocol.DataTypes.COMMAND, "command": [u"" + cmd, 0, None,] + pars}
-        debugPrint("CLIENT: " + str(msg), self.room)
-        self.connection.writer.write(msg)
-        self.connection.writer.flush()
+        # Ignore, if disconnected.
+        if self.connected:
+            # Apply a limit of 10 privmsg's/notices (& uncam) in 1 second.
+            if cmd in {"privmsg", "owner_run"}:
+                self.limitMsgs["msgs"] += 1
+                # Set first msg time().
+                if self.limitMsgs["msgs"] == 1:
+                    self.limitMsgs["first"] = time.time()
+                # Complete 1 second if needed, and reset count.
+                elif self.limitMsgs["msgs"] == 10:
+                    d = time.time() - self.limitMsgs["first"]
+                    if d < 1:
+                        time.sleep(1-d)
+                    self.limitMsgs["msgs"] = 0
+            # Send command.
+            self.connection.writer.write(msg)
+            self.connection.writer.flush()
     
     # Adds timestamp to log messages, prints to console, and saves to file.
     def _chatlog(self, msg, alert=False):
@@ -764,11 +1040,11 @@ class TinychatRoom():
         if not alert:
             msg = "> " + msg
         
-        msg = ("["+get_current_time()+"]["+ str(self.roomID)+"]["+self.room+"] " + msg)
+        msg = ("["+get_current_time()+"]["+str(self.roomID)+"]["+self.room+"] " + msg)
         
         if self.chatVerbose:
             if (not self.connected or self.printOverride or
-                not SETTINGS["RunningOnWindows"] or SETTINGS["UserInput"] is None):
+                not SETTINGS["RunningOnWindows"] or not SETTINGS["UserInput"]):
                 try:
                     print(msg.encode("unicode-escape"))     # .encode("string-escape")
                 except:
@@ -797,23 +1073,65 @@ class TinychatRoom():
                 # traceback.print_exc()
                 print(msg.encode("ascii", "replace"))
         self.chatlogQueue = []
-
-# Events.
+    
+    # Checks if the bot is in the room's user list, from TC API.
+    # Does reconnect() if not in the room.
+    def _keepAlive(self):
+        i = 0
+        while self.keepAlive:
+            time.sleep(120)
+            
+            try:
+                raw = requests.get("http://api.tinychat.com/"+self.room+".xml", timeout=15)
+                text = raw.text
+                
+                # Page not available.
+                if raw.status_code != 200:
+                    available = False
+                else:
+                    available = True
+                
+                # PW rooms deny this function.
+                ps = 'error="Password required"' in text
+                
+                # Either nick, or assume reconnection if no user().
+                try:
+                    nick = self.user.nick
+                    res = nick in text
+                except:
+                    nick = "is"
+                    res = False
+                
+                if available and not pw and not res:
+                    i += 1
+                    # Consecutive not-in-room only apply.
+                    if i == 2:
+                        room._chatlog("Bot "+nick+" not in room "+self.room+"! Reconnecting...", True)
+                        room.reconnect()
+                else:
+                    i = 0
+            except:
+                pass
+    
+    # Events #
+    
     # When a user joins, before supplying a nickname. First join() is self.
     # Or from a the joins event, from users already in the room.
     def onJoin(self, u, joins=False, myself=False):
-        user = self._makeUser(u.nick)
-        user.id = str(u.id)
+        user = self._makeUser(u.id)
+        user.nick = u.nick
         user.account = u.account
         user.mod = u.mod
         user.pro = u.pro
-        user.own = u.own
+        user.admin = u.own
         user.gp = u.gp
         user.alevel = u.alevel
-        user.bf = u.bf
-        user.lf = u.lf
+        user.broadcasting = u.bf
+        user.lurking = u.lf
         
-        s = user.nick
+        s = user.nick + " ["+str(user.id)+"]"
+        if user.lurking:
+            s += " (Guest-Mode)"
         if user.account:
             s += " ("+user.account+")"
         if user.mod:
@@ -828,27 +1146,37 @@ class TinychatRoom():
             # cauth required to use privmsg().
             self.sendCauth(user.id)
             self._chatlog("You have joined the room as "+s+".", True)
-            return
-        
-        if joins:
-            self._chatlog(s + " is in the room.", True)
         else:
-            self._chatlog(s + " has joined the room.", True)
+            if joins:
+                self._chatlog(s + " is in the room.", True)
+            else:
+                self._chatlog(s + " has joined the room.", True)
         
         # Further handling.
         if SETTINGS['onJoinExtend']:
             try:
-                SETTINGS['onJoinExtend'](self, user)
+                SETTINGS['onJoinExtend'](self, user, joins, myself)
             except:
                 traceback.print_exc()
+        
+        # Handle cammed users.
+        if user.broadcasting:
+            self.onBroadcast(user.nick, user.id, True)
     
     # After finishing all the connection events. Ready for action!
     def onJoinsdone(self):
-        # Humane delay.
-        time.sleep(1.5)
-        
         if self.nick:
+            time.sleep(1.4)     # Humane delay.
             self.setNick()
+        
+        # Internal instructions for further handling.
+        if self.instructions:
+            doInstructions(self)
+        
+        # Keepalive.
+        t = threading.Thread(target=self._keepAlive, args=())
+        t.daemon = True
+        t.start()
         
         # Instructions or further handling.
         if SETTINGS['onJoinsdoneExtend']:
@@ -859,24 +1187,27 @@ class TinychatRoom():
         
         # Otherwise, do things when done entering room.
         self._sendCommand("banlist", [])
-        
-        # Verbose to room.
-        if SETTINGS["ReadyMessage"]:
-            self.notice("I am now available. All systems go.")
     
     # When a user has left the room, for any reason.
-    def onQuit(self, nick):
-        self._chatlog(nick + " has left.", True)
+    # userID is int().
+    def onQuit(self, nick, userID):
+        user = self._getUser(userID)
+        # Server sends double quits.
+        if not user:
+            # print "No user object from onQuitHandle(): "+nick+" ["+str(userID)+"]"
+            return
+        
+        self._chatlog(nick + " ["+str(userID)+"] has left.", True)
         
         # Further handling.
         if SETTINGS['onQuitExtend']:
             try:
-                SETTINGS['onQuitExtend'](self, nick)
+                SETTINGS['onQuitExtend'](self, user)
             except:
                 traceback.print_exc()
         
         # Remove from room.users{}.
-        self._deleteUser(nick)
+        self._deleteUser(userID)
     
     # A notice message event.
     def onNotice(self, notice):
@@ -934,17 +1265,13 @@ class TinychatRoom():
                 traceback.print_exc()
     
     # Handle all finished-joining-room events.
-    def onNickChange(self, old, new):
+    def onNickChange(self, old, new, userid):
         # Update user object.
-        user = self._getUser(old)
+        user = self._getUser(userid)
         
         user.nick = new
         
-        # Update room users[] list references.
-        self.users[new] = user
-        del self.users[old]
-        
-        self._chatlog(old + " is now known as " + new + ".", True)
+        self._chatlog(old+" ["+str(user.id)+"] is now known as "+new+".", True)
         
         # Further handling.
         if SETTINGS['onNickChangeExtend']:
@@ -962,8 +1289,10 @@ class TinychatRoom():
     
     # Get banlist, and forgive matching users from queue.
     def onBanlist(self, banlist):
-        if type(banlist) is not list: return
-        if len(banlist) <= 1: return
+        if type(banlist) is not list:
+            return
+        if len(banlist) <= 1:
+            return
         
         # ID, Nickname.
         if len(banlist) == 2:
@@ -984,7 +1313,7 @@ class TinychatRoom():
             # Forgive all.
             # i = 0
             for user in self.banlist:
-                userID = user[0]
+                userID = int(user[0])
                 userNick = user[1]
                 # time.sleep(0.2)
                 self.forgive(userID)
@@ -1004,7 +1333,7 @@ class TinychatRoom():
                     word = nick[0]
                     
                     for user in self.banlist:
-                        userID = user[0]
+                        userID = int(user[0])
                         userNick = user[1]
                         
                         if word in userNick:
@@ -1015,7 +1344,7 @@ class TinychatRoom():
                             # j += 1
                 else:
                     for user in self.banlist:
-                        userID = user[0]
+                        userID = int(user[0])
                         userNick = user[1]
                         
                         if userNick == nick:
@@ -1029,20 +1358,20 @@ class TinychatRoom():
             self.forgives = filter(None, self.forgives)
     
     # When a user goes on cam.
-    def onBroadcast(self, nick, userid):
+    def onBroadcast(self, nick, userid, fromJoin=False):
         # Phone users get have a :android or :iphone in their broadcast id.
         try:
-            userid = str(int(userid))
+            userid = int(userid)
             device = None
         except:
             col = userid.find(":")
             device = userid[col+1:]
-            userid = userid[:col]
+            userid = int(userid[:col])
         
-        user = self._getUser(nick)
+        user = self._getUser(userid)
         if not user:
-            user = self._makeUser(nick)
-            user.id = userid
+            user = self._makeUser(userid)
+            user.nick = nick
         user.device = device
         
         # Further handling.
@@ -1052,8 +1381,19 @@ class TinychatRoom():
             except:
                 traceback.print_exc()
         
-        self._chatlog(nick + " is now broadcasting.", True)
+        if not fromJoin:
+            self._chatlog(nick + " is now broadcasting.", True)
+        else:
+            self._chatlog(nick + " is broadcasting.", True)
         user.broadcasting = True
+        
+        if user == self.user or not SETTINGS["ReceiveCams"]:
+            return
+        
+        try:
+            self.createStream(user.id, "down")
+        except:
+            pass
     
     # When any cam is closed (by mod), in the room.
     def onCamClosed(self, nick=None):
@@ -1071,6 +1411,20 @@ class TinychatRoom():
             
             user.broadcasting = False
     
+    # When bot or someone gets banned.
+    def onBanned(self, userID=None, nick=None, bot=False):
+        if bot:
+            self.disconnect()
+            self._chatlog("Bot just got banned!!!", True)
+            if SETTINGS["ReconnectOnBan"]:
+                self._chatlog("Reconnecting...", True)
+                self.reconnect()
+            else:
+                # Don't bother reconnecting, in any form.
+                self.keepAlive = False
+        else:
+            self._chatlog(nick+" ["+str(userID)+"] has been banned!", True)
+    
     # Track all the room's YT events.
     def trackYT(self, msg, user):
         # pause   /mbpa youTube
@@ -1080,7 +1434,8 @@ class TinychatRoom():
         # skip    /mbsk youTube 67000
         
         try:
-            if msg[0] != "/": return
+            if msg[0] != "/":
+                return
             
             # Remove trailing slash.
             msg = msg[1:]
@@ -1092,7 +1447,8 @@ class TinychatRoom():
             return
         
         # Only for youtubes.
-        if target != "youTube": return
+        if target != "youTube":
+            return
         
         # Only skip/resume/start have values here.
         try:
@@ -1113,7 +1469,8 @@ class TinychatRoom():
             try:
                 duration = getYTduration(vid)
                 
-                if not duration: raise Exception()
+                if not duration:
+                    raise Exception()
                 
                 t = int(time.time())
                 YTqueue["start"]    = t
@@ -1155,7 +1512,8 @@ class TinychatRoom():
     # Track all the room's SC events.
     def trackSC(self, msg, user):
         try:
-            if msg[0] != "/": return
+            if msg[0] != "/":
+                return
             
             # Remove trailing slash.
             msg = msg[1:]
@@ -1167,7 +1525,8 @@ class TinychatRoom():
             return
         
         # Only for soundclouds.
-        if target != "soundCloud": return
+        if target != "soundCloud":
+            return
         
         # Only skip/resume/start have values here.
         try:
@@ -1188,7 +1547,9 @@ class TinychatRoom():
             try:
                 duration = getSCduration(track)
                 
-                if not duration: raise Exception()
+                # Unstreamable track.
+                if type(duration) is str:
+                    raise Exception()
                 
                 t = int(time.time())
                 SCqueue["start"]    = t
@@ -1211,7 +1572,7 @@ class TinychatRoom():
             
             if SCqueue["start"]:
                 SCqueue["skip"] = skip
-            
+        
         if cmd == "mbpl":
             # Resume track at time.
             if SCqueue["start"] and SCqueue["paused"]:
@@ -1220,14 +1581,15 @@ class TinychatRoom():
                 SCqueue["start"]    = t
                 SCqueue["skip"]     = skip
                 SCqueue["paused"]   = 0
-            
+        
         if cmd == "mbpa":
             # Pause track.
             if SCqueue["start"] and not SCqueue["paused"]:
                 # Save pausing time.
                 SCqueue["paused"] = int(time.time())
-
-# Actions.
+    
+    # Actions #
+    
     # Send message to room.
     # Can filter to specific user, and return error message if failed.
     def say(self, msg, to=None):
@@ -1299,15 +1661,16 @@ class TinychatRoom():
         else:
             to = ""
         
-        self._chatlog(self.nick +to+": " + msg)
+        self._chatlog(self.user.nick +to+": " + msg)
     
-    # Send a private message to another user by nickname or user obj.
+    # Send a private message to another user by nickname, id, or user obj.
     # Returns False if user not found, True on success.
     def pm(self, user, msg):
         # Only to existing users, to hide it from others.
-        if type(user) is str or type(user) is unicode:
+        if type(user) in {str, unicode, int}:
             user = self._getUser(user)
-            if not user: return False
+            if not user:
+                return False
         
         # Split message into several, if too long.
         if len(msg) > SETTINGS["MaxCharsPM"]:
@@ -1347,22 +1710,22 @@ class TinychatRoom():
         # Send all msgs.
         for curmsg in msgs:
             if user.broadcasting:
-                self._sendCommand("privmsg", 
-                    [self._encodeMessage("/msg "+user.nick+" "+curmsg), 
-                    self.color+",en", 
-                    "b"+user.id+"-"+user.nick])
+                self._sendCommand("privmsg",
+                    [self._encodeMessage("/msg "+user.nick+" "+curmsg),
+                    self.color+",en",
+                    "b"+str(user.id)+"-"+user.nick])
                 # Can't figure when someone stops broadcasting, so gotta send both.
-                self._sendCommand("privmsg", 
-                    [self._encodeMessage("/msg "+user.nick+" "+curmsg), 
-                    self.color+",en", 
-                    "n"+user.id+"-"+user.nick])
+                self._sendCommand("privmsg",
+                    [self._encodeMessage("/msg "+user.nick+" "+curmsg),
+                    self.color+",en",
+                    "n"+str(user.id)+"-"+user.nick])
             else:
-                self._sendCommand("privmsg", 
-                    [self._encodeMessage("/msg "+user.nick+" "+curmsg), 
-                    self.color+",en", 
-                    "n"+user.id+"-"+user.nick])
+                self._sendCommand("privmsg",
+                    [self._encodeMessage("/msg "+user.nick+" "+curmsg),
+                    self.color+",en",
+                    "n"+str(user.id)+"-"+user.nick])
         
-        self._chatlog("(@" + user.nick +") "+ str(self.nick) +": "+msg)
+        self._chatlog("(@" + user.nick +") "+ str(self.user.nick) +": "+msg)
         
         return True
     
@@ -1427,45 +1790,28 @@ class TinychatRoom():
                 except:
                     # Special character.
                     try:
-                        encodedMsg += quote_plus(char.encode('utf8'), safe='/')
+                        encodedMsg += quote_plus(char.encode("utf-8", "replace"), safe='/')
                     except:
                         pass
             
             self._sendCommand("owner_run", [u"notice" + encodedMsg])
         
-        self._chatlog("*"+self.nick+"*: " + msg)
-    
-    # Sends a /userinfo request, or returns False if user not found.
-    # user can be a nickname to _getUser(), or an existing user object.
-    def requestUserinfo(self, user):
-        if type(user) is str or type(user) is unicode:
-            user = self._getUser(user)
-        
-        if not user: return False
-        
-        # self._sendCommand("privmsg", [u"" + self._encodeMessage("/userinfo $request"), 
-        #     "#0,en", "b"+user.id+"-"+user.nick])
-        # self._sendCommand("privmsg", [u"" + self._encodeMessage("/userinfo $request"), 
-        #     "#0,en", "n"+user.id+"-"+user.nick])
-        
-        self._sendCommand("account", [str(user.id)])
-    
-    # IRRELEVANT.
-    # Sends the bot's userinfo to another user, or return False if user not found.
-    def sendUserInfo(self, user, username):
-        return
-        # user = self._getUser(user)
-        # if not user: return False
-        
-        # self._sendCommand("privmsg", [self._encodeMessage("/userinfo "+username),
-        #     "#0,en"+"n"+user.id+"-"+user.nick])
-        # self._sendCommand("privmsg", [self._encodeMessage("/userinfo "+username),
-        #     "#0,en"+"b"+user.id+"-"+user.nick])
+        # Back to unicode() for string manipulation.
+        try:
+            msg = msg.decode("utf-8", "replace")
+        except:
+            pass
+        self._chatlog("*"+self.user.nick+"*: " + msg)
     
     # Does nothing, if has illegal characters.
     def setNick(self, nick=""):
+        # Force limit nicks to 32 characters.
+        if len(nick) > 32:
+            nick = nick[:32]
+        
         # On join done, set up first nick.
-        if not nick: nick = self.nick
+        if not nick:
+            nick = self.nick
         
         # Nicks can only be certain characters.
         # 'yes' if re.search(r'[^\w\-\[\]\{\}]', "f432fgre_-[]{}") else 'no'
@@ -1487,27 +1833,48 @@ class TinychatRoom():
     def getBanlist(self):
         self._sendCommand("banlist", [])
     
-    # Close a camera.
-    def uncam(self, nick):
+    # Close a camera by nick, userid, or user obj.
+    def uncam(self, user):
+        if type(user) in {int, str, unicode}:
+            user = self._getUser(user)
+            if not user:
+                return False
+            nick = user.nick
+        else:
+            nick = user.nick
+        
         self._sendCommand("owner_run", [ u"_close" + nick])
     
-    # Bans a user by nickname or reference, and returns True.
+    # Bans a user by nick, userid, or user obj, and returns True.
     # Returns False if user not found.
     # Returns error message if user is oper or botter.
     def ban(self, user, override=False):
-        if not user: return False
+        if not user:
+            return False
         
-        if type(user) is str or type(user) is unicode:
+        if type(user) in {str, unicode, int}:
             user = self._getUser(user)
-            if not user: return False
+            if not user:
+                return False
         
         if not override and user.mod:
             return "I do not ban moderators..."
         
-        self._sendCommand("kick", [user.nick, user.id])
+        self._sendCommand("kick", [user.nick, str(user.id)])
         return True
     
-    def forgive(self, userid):
+    # Forgives a user by nick, userid, or user obj.
+    def forgive(self, user):
+        if type(user) is int:
+            userid = user
+        elif type(user) in {str, unicode}:
+            user = self._getUser(user)
+            if not user:
+                return False
+            userid = user.id
+        else:
+            userid = user.id
+        
         self._sendCommand("forgive", [u"" + str(userid)])
     
     # If nick is True, forgive all.
@@ -1532,7 +1899,8 @@ class TinychatRoom():
         if (YTqueue["paused"]): cmd = "mbsp"
         
         # Bot must have played something, already.
-        if not YTqueue["history"]: return
+        if not YTqueue["history"]:
+            return
         
         # Either not in history, because played by a mod,
         # Or not tracking current, for any reason, so don't send it.
@@ -1542,10 +1910,11 @@ class TinychatRoom():
         vid = YTqueue["history"][-1]
         skip = getTimeYT()              # Also checks, and resets queue, if no vid playing.
         
-        if not skip: return
+        if not skip:
+            return
         
-        self._sendCommand("privmsg", [u"" + self._encodeMessage("/" + cmd +" youTube " + vid + " " + str(skip*1000)), 
-                            "#0" + ",en", "n" + user.id + "-" + user.nick])
+        self._sendCommand("privmsg", [u"" + self._encodeMessage("/" + cmd +" youTube " + vid + " " + str(skip*1000)),
+                            "#0" + ",en", "n" + str(user.id) + "-" + user.nick])
     
     # Sends a start-SC msg with current time and pause state.
     # Assumes user exists.
@@ -1554,7 +1923,8 @@ class TinychatRoom():
         if (SCqueue["paused"]): cmd = "mbsp"
         
         # Bot must have played something, already.
-        if not SCqueue["history"]: return
+        if not SCqueue["history"]:
+            return
         
         # Either not in history, because played by a mod,
         # Or not tracking current, for any reason, so don't send it.
@@ -1564,16 +1934,19 @@ class TinychatRoom():
         track = SCqueue["history"][-1]
         skip = getTimeSC()              # Also checks, and resets queue, if no track playing.
         
-        if not skip: return
+        if not skip:
+            return
         
-        self._sendCommand("privmsg", [u"" + self._encodeMessage("/" + cmd +" soundCloud " + track + " " + str(skip*1000)), 
-                            "#0" + ",en", "n" + user.id + "-" + user.nick])
+        self._sendCommand("privmsg", [u"" + self._encodeMessage("/" + cmd +" soundCloud " + track + " " + str(skip*1000)),
+                            "#0" + ",en", "n" + str(user.id) + "-" + user.nick])
     
-    # Try to play a YT video, or relegate to SC.
-    # Returns False or error message on failure, otherwise True.
+    # Try to play a YT video, or relegate to startSC().
+    # Returns True on success.
+    # Returns str() error message on failure.
     def startYT(self, video, skip=0):
         # Catch invalid video.
-        if not video: return False
+        if not video:
+            return "No video given to startYT()..."
         
         # Make certain of skip.
         if not skip:
@@ -1586,22 +1959,21 @@ class TinychatRoom():
         
         # Relegate to playSoundcloud() if SC link matched.
         if "soundcloud.com/" in video:
-            self.startSC(video, skip)
-            return True
+            return self.startSC(video, skip)
         
         # Also, might get an SC ID, which is a very big number.
         # Youtube IDs are [seems to be] never a number.
         try:
             track = int(video)
-            self.startSC(video, skip)
-            return True
+            return self.startSC(video, skip)
         except:
             pass
         
         vid = getYTid(video)
         
         # Failure getting ID.
-        if not vid: return False
+        if not vid:
+            return "Failed to get video ID..."
         
         # I could verify the video ID legit, if I really wanted.
         # http://gdata.youtube.com/feeds/api/videos/VIDEOIDHERE
@@ -1625,19 +1997,21 @@ class TinychatRoom():
         YTqueue["paused"] = 0
         
         # Further requires an API key.
-        if not YTkey: return True
+        if not SETTINGS["YTKey"]:
+            return True
         
         # Track the video.
         duration = getYTduration(vid)
         
-        if not duration: return True
+        if type(duration) is str:
+            return duration
         
         t = int(time.time())
         YTqueue["start"]    = t
         YTqueue["length"]   = duration
         YTqueue["skip"]     = skip
         YTqueue["current"]  = vid
-        return True    
+        return True
     
     def closeYT(self):
         self.say("/mbc youTube")
@@ -1683,10 +2057,12 @@ class TinychatRoom():
             YTqueue["skip"] = skip
     
     # Try to play a SC track.
-    # Returns False or error message on failure, otherwise True.
+    # Returns True on success.
+    # Returns str() error message on failure.
     def startSC(self, track, skip=0):
         # Catch invalid video.
-        if not track: return False
+        if not track:
+            return "No track given to startSC()..."
         
         # Never 0 in skip, and make certain of it.
         # if not skip or skip == "0": skip = 1
@@ -1776,9 +2152,10 @@ class TinychatRoom():
         key = keys[random.randint(0, len(keys) - 1)]
         self.color = TINYCHAT_COLORS[key]
         return key
-
-# RTMP Connection Helper Functions.
-    def __authHTTP(self):
+    
+    # API (partial) #
+    
+    def authHTTP(self):
         # self.headers = {'Host': 'tinychat.com',
         #                 'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:35.0) Gecko/20100101 Firefox/35.0',
         #                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -1799,21 +2176,21 @@ class TinychatRoom():
         
         # Only if login data available.
         if self.username and self.passwd:
-            res = self._login()
+            res = self.login()
             
             # Failed to establish connection or get proper response.
             if not res:
-                self._chatlog("Failed to connect to tinychat.com for login. Quitting...", True)
-                sys.exit()
+                self._chatlog("Failed to connect to tinychat.com for login...", True)
+                raise Exception()   # Kill this connection attempt.
             
             # Failure to login, if only 1 cookie added.
             if len(self.s.cookies) == 1:
-                self._chatlog("Failed to login! Check your username and password. Quitting...", True)
-                sys.exit()
+                self._chatlog("Failed to login! Check your username and password...", True)
+                raise Exception()   # Kill this connection attempt.
     
     # Logins to Tinychat account, aquiring login cookies into session.
     # Returns True on successful login.
-    def _login(self, username="", password=""):
+    def login(self, username="", password=""):
         if not username:
             username = self.username
         if not password:
@@ -1828,77 +2205,52 @@ class TinychatRoom():
                 "passwordfake": "Password"}
         url = "http://tinychat.com/login"
         
-        self.s = requests.session()
+        # self.s = requests.session()
         try:
             # TODO: Remove empty cookies?
-            raw = self.s.request(method='POST', url=url, data=data, headers=self.headers, cookies=self.cookies, timeout=20)
+            raw = self.s.request(method='POST', url=url, data=data, headers=self.headers,
+                cookies=self.cookies, timeout=20, proxies=self.proxies)
             if raw.status_code != 200:
-                raise Exception()
+                raise Exception("Status code: "+str(raw.status_code))
         except:
-            traceback.print_exc()
+            # traceback.print_exc()
             return False
         
         return True
     
     # Returns the rtmp url, and sets .roomTime and .type.
-    def __getRTMPInfo(self):
+    def getRTMPInfo(self):
         if self.roomPassword:
             pwurl = ("http://apl.tinychat.com/api/find.room/"+self.room+"?site="+self.site+
                 "&url=tinychat.com&password="+self.roomPassword)
-            raw = self.s.get(pwurl, timeout=15)
+            raw = self.s.get(pwurl, timeout=15, proxies=self.proxies)
         else:
             url = "http://apl.tinychat.com/api/find.room/"+self.room+"?site="+self.site
             # TODO: Remove empty cookies?
-            raw = self.s.request(method="GET", url=url, headers=self.headers, cookies=self.cookies, timeout=15)
-            if "result='PW'" in raw.text:
-                self.roomPassword = raw_input("Enter the password for room " + self.room + ": ")
-                return self.__getRTMPInfo()
-            else:
-                if raw.text.find("time=") >= 0:
-                    self.roomTime = raw.text.split("time='")[1].split("'")[0]
-                if raw.text.find("roomtype=") >= 0:
-                    self.type = raw.text.split("roomtype='")[1].split("'")[0]
-                # For greenroom broadcast approval.
-                if raw.text.find("bpassword=") >= 0:
-                    self.bpass = raw.text.split("bpassword='")[1].split("'")[0]
-                if raw.text.find('greenroom="1"') >= 0:
-                    self.greenroom = True
-                
-                # Return rtmp address.
-                return raw.text.split("rtmp='")[1].split("'")[0]
-    
-    # Gets the room's HTML for AutoOp and ProHash.
-    # Returns empty string if failed.
-    def __getRoomPage(self, room):
-        url = "http://tinychat.com/" + self.room
-        try:
-            # TODO: Remove empty cookies?
-            raw = self.s.request(method="GET", url=url, headers=self.headers, cookies=self.cookies, timeout=15)
-            return raw.text
-        except:
-            return ""
-    
-    def __getAutoOp(self, room):
-        if SETTINGS["AutoOp"]:
-            r = SETTINGS["AutoOp"]
+            raw = self.s.request(method="GET", url=url, headers=self.headers,
+                cookies=self.cookies, timeout=15, proxies=self.proxies)
+        
+        if "result='PW'" in raw.text:
+            self.roomPassword = raw_input("Enter the password for room " + self.room + ": ")
+            return self.getRTMPInfo()
         else:
-            if ", autoop: \"" in self.roomPage:
-                r = self.roomPage.split(", autoop: \"")[1].split("\"")[0]
-                return r
-            else:
-                return ""
+            # Set some vars.
+            # if raw.text.find("name=") >= 0:
+            #     self.site = raw.text.split("name='")[1].split("'")[0].split("^")[0]
+            if raw.text.find("time=") >= 0:
+                self.roomTime = raw.text.split("time='")[1].split("'")[0]
+            if raw.text.find("roomtype=") >= 0:
+                self.type = raw.text.split("roomtype='")[1].split("'")[0]
+            # For greenroom broadcast approval.
+            if raw.text.find("bpassword=") >= 0:
+                self.bpass = raw.text.split("bpassword='")[1].split("'")[0]
+            if raw.text.find('greenroom="1"') >= 0:
+                self.greenroom = True
+            
+            # Return rtmp address.
+            return raw.text.split("rtmp='")[1].split("'")[0]
     
-    def __getProHash(self, room):
-        if SETTINGS["ProHash"]:
-            r = SETTINGS["ProHash"]
-        else:
-            if ", prohash: \"" in self.roomPage:
-                r = self.roomPage.split(", prohash: \"")[1].split("\"")[0]
-                return r
-            else:
-                return ""
-    
-    def __getEncMills(self):
+    def getEncMills(self):
         headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:35.0) Gecko/20100101 Firefox/35.0',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -1909,7 +2261,7 @@ class TinychatRoom():
         # mills = self.roomTime
         url = "http://tinychat.com/cauth?room="+self.room+"&t="+str(mills)
         # r = self.s.request(method="GET", url=url, headers=headers, timeout=15)
-        r = self.s.get(url, timeout=15)
+        r = self.s.get(url, timeout=15, proxies=self.proxies)
         
         res = None
         try:
@@ -1919,7 +2271,7 @@ class TinychatRoom():
             self._chatlog("Failed to get CauthTimestamp!")
         return res
     
-    def __solveRecaptcha(self):
+    def solveRecaptcha(self):
         # Optional request to skip recaptcha.
         if self.noRecaptcha:
             return 0
@@ -1932,7 +2284,7 @@ class TinychatRoom():
                 'DNT': 1}
         url = "http://tinychat.com/cauth/captcha" # Should have a number, like: ?0.5732091250829399 or ?0.2929161135107279
         # r = self.s.request(method="GET", url=url, headers=headers, timeout=15)
-        r = self.s.get(url, timeout=15)
+        r = self.s.get(url, timeout=15, proxies=self.proxies)
         
         # False stands for general failure.
         # 0 Stands for no need to do recaptcha.
@@ -1953,20 +2305,36 @@ class TinychatRoom():
         return result
     
     def sendCauth(self, userID):
-        url = ("http://tinychat.com/api/captcha/check.php?room="+
-            self.site+"^"+self.room+"&guest_id="+self.user.id)
-        raw = self.s.get(url, timeout=15)
+        url = "http://tinychat.com/api/captcha/check.php?room="+self.site+"^"+self.room+"&guest_id="+str(self.user.id)
+        raw = self.s.get(url, timeout=15, proxies=self.proxies)
         if 'key":"' in raw.text:
             r = raw.text.split('key":"')[1].split('"')[0]
             rr = r.replace("\\", "")
             self._sendCommand("cauth", [u"" + rr])
         else:
-            self._chatlog("Failed to pass chat captcha! " +
-                "Bot will be unable to send messages to room.", True)
-            # sys.exit()
-                    
+            # Bypass Captcha.
+            if BYPASS_CAPTCHA:
+                try:
+                    res = BYPASS_CAPTCHA.main(self)
+                    if res:
+                        self._sendCommand("cauth", [u"" + res])
+                        self._chatlog("Captcha bypassed...")
+                        return
+                except:
+                    traceback.print_exc()
+            
+            msg = "Failed to bypass room Captcha... Unable to send messages..."
+            if self.autoBot:
+                if type(self.autoBot) is list:
+                    nick = self.autoBot[0]
+                    ROOMS[0].pm(nick, msg)
+                else:
+                    ROOMS[0].notice(msg)
+            else:
+                self._chatlog(msg)
+    
     def doTimestampRecaptcha(self):
-        recaptcha = self.__solveRecaptcha()
+        recaptcha = self.solveRecaptcha()
         
         if recaptcha is False:
             self._chatlog("Failed to get Recaptcha token!")
@@ -1979,77 +2347,114 @@ class TinychatRoom():
             
             link = "http://www.tinychat.com/cauth/recaptcha?token="+recaptcha
             
-            if SETTINGS["InteractiveConsole"]:
-                # Windows only! Starts default browser.
-                if SETTINGS["RunningOnWindows"]:
-                    e = os.system("start "+link)
-                
-                self._chatlog("And then press Enter to continue connecting...")
-                if not SETTINGS["RunningOnWindows"] or SETTINGS["UserInput"] is None:
-                    raw_input()
-                else:
-                    while True:
-                        # Continue, after any key hit.
-                        char = None
-                        while msvcrt.kbhit():
-                            char = msvcrt.getch()
-                        if char: break
-            else:
+            # Autobots, assuming from !advertise, should send link on main room or user.
+            if self.autoBot:
                 i = 1
                 minstr = "minute"
                 if i > 1:
                     minstr += "s"
-                self._chatlog("Waiting for Recaptcha to be solved, " +
+                
+                self._chatlog("Waiting for Recaptcha to be solved. " +
                     "You have "+str(i)+" "+minstr+", before Recaptcha token expires.")
                 
-                string = ("Creation of link: <b>" + get_current_time() + "</b> " + current_date + 
-                    "<br> You have "+str(i)+" "+minstr+" to solve this Recaptcha, " +
-                    "before page (token) expires and requires refreshing.<br><br>" +
-                    "<a href='"+link+"'>Click here to open Recaptcha in a new window.</a><br><br>" +
-                    "<iframe src='"+link+"' height='600' width='600' frameborder='0'></iframe>")
-                verboseHTTP(string)
+                msg = "You have "+str(i)+" "+minstr+" to solve this Recaptcha: " + link
+                if type(self.autoBot) is list:
+                    nick = self.autoBot[0]
+                    ROOMS[0].pm(nick, msg)
+                else:
+                    ROOMS[0].notice(msg)
                 
-                # Check Recaptcha completion, to move on.
-                while True:
-                    time.sleep(i*60)
-                    
-                    recaptcha = self.__solveRecaptcha()
-                    
-                    if recaptcha == 0:
-                        self._chatlog("Recaptcha verified, connecting...")
-                        break
-                    elif recaptcha is False:
-                        self._chatlog("Recaptcha token expired. " +
-                            "Failed to get new Recaptcha token!")
+                time.sleep(i * 60)
+                
+                recaptcha = self.solveRecaptcha()
+                if recaptcha != 0:
+                    msg = "Recaptcha failed (too late), disconnecting..."
+                    if type(self.autoBot) is list:
+                        nick = self.autoBot[0]
+                        ROOMS[0].pm(nick, msg)
                     else:
-                        self._chatlog("Recaptcha token expired. New token generated:")
-                        self._chatlog("tinychat.com/cauth/recaptcha?token=" + recaptcha)
-                        print "tinychat.com/cauth/recaptcha?token=" + recaptcha
+                        ROOMS[0].notice(msg)
+                    self.disconnect()
+            else:
+                if SETTINGS["InteractiveConsole"]:
+                    # Windows only! Starts default browser.
+                    if SETTINGS["RunningOnWindows"]:
+                        e = os.system("start "+link)
+                    
+                    self._chatlog("And then press Enter to continue connecting...")
+                    if not SETTINGS["RunningOnWindows"] or SETTINGS["UserInput"] is None:
+                        raw_input()
+                    else:
+                        while True:
+                            # Continue, after any key hit.
+                            char = None
+                            while msvcrt.kbhit():
+                                char = msvcrt.getch()
+                            if char: break
+                else:
+                    i = 1
+                    minstr = "minute"
+                    if i > 1:
+                        minstr += "s"
+                    self._chatlog("Waiting for Recaptcha to be solved, " +
+                        "You have "+str(i)+" "+minstr+", before Recaptcha token expires.")
+                    
+                    string = ("Creation of link: <b>" + get_current_time() + "</b> " + current_date +
+                        "<br> You have "+str(i)+" "+minstr+" to solve this Recaptcha, " +
+                        "before page (token) expires and requires refreshing.<br><br>" +
+                        "<a href='"+link+"'>Click here to open Recaptcha in a new window.</a><br><br>" +
+                        "<iframe src='"+link+"' height='600' width='600' frameborder='0'></iframe>")
+                    printFile(SETTINGS["Recaptcha"], string, local=True)
+                    
+                    # Check Recaptcha completion, to move on.
+                    while True:
+                        time.sleep(i*60)
                         
-                        link = "http://www.tinychat.com/cauth/recaptcha?token="+recaptcha
-                        string = ("Creation of link: <b>" + get_current_time() + "</b> " + current_date + 
-                            "<br> You have "+str(i)+" "+minstr+" to solve this Recaptcha, " +
-                            "before page (token) expires and requires refreshing.<br><br>" +
-                            "<a href='"+link+"'>Click here to open Recaptcha in a new window.</a><br><br>" +
-                            "<iframe src='"+link+"' height='600' width='600' frameborder='0'></iframe>")
-                        verboseHTTP(string)
+                        # Clear out previous recaptcha.
+                        printFile(SETTINGS["Recaptcha"], local=True)
+                        
+                        recaptcha = self.solveRecaptcha()
+                        
+                        if recaptcha == 0:
+                            self._chatlog("Recaptcha verified, connecting...")
+                            break
+                        elif recaptcha is False:
+                            self._chatlog("Recaptcha token expired. " +
+                                "Failed to get new Recaptcha token!")
+                        else:
+                            self._chatlog("Recaptcha token expired. New token generated:")
+                            self._chatlog("tinychat.com/cauth/recaptcha?token=" + recaptcha)
+                            print "tinychat.com/cauth/recaptcha?token=" + recaptcha
+                            
+                            link = "http://www.tinychat.com/cauth/recaptcha?token="+recaptcha
+                            string = ("Creation of link: <b>" + get_current_time() + "</b> " + current_date +
+                                "<br> You have "+str(i)+" "+minstr+" to solve this Recaptcha, " +
+                                "before page (token) expires and requires refreshing.<br><br>" +
+                                "<a href='"+link+"'>Click here to open Recaptcha in a new window.</a><br><br>" +
+                                "<iframe src='"+link+"' height='600' width='600' frameborder='0'></iframe>")
+                            printFile(SETTINGS["Recaptcha"], string, local=True)
         
         # Clear out recaptcha, when done.
-        verboseHTTP()
+        printFile(SETTINGS["Recaptcha"], local=True)
         
-        self.timecookie = self.__getEncMills()
+        self.timecookie = self.getEncMills()
 
 # Returns the duration from a video ID, as int() in seconds.
-# None on failure.
+# None on failure. Error str() if not embeddable.
 def getYTduration(vid):
     try:
-        raw = requests.get("https://www.googleapis.com/youtube/v3/videos?id="+
-            vid+"&part=contentDetails&key="+YTkey, timeout=15)
+        raw = requests.get("https://www.googleapis.com/youtube/v3/videos?key="+
+            SETTINGS["YTKey"]+"&part=contentDetails,status&id="+vid, timeout=15)
         obj = raw.json()
+        item = obj['items'][0]  # First item.
         
-        duration = StringifiedToSeconds(obj['items'][0]["contentDetails"]["duration"])
+        # Must be embeddable.
+        if not item["status"]["embeddable"]:
+            return "Video "+vid+" is not embeddable..."
+        
+        duration = StringifiedToSeconds(item["contentDetails"]["duration"])
     except:
-        return
+        return "Failed to get video "+vid+" duration from YT API..."
     
     # Success.
     return duration
@@ -2058,10 +2463,16 @@ def getYTduration(vid):
 # None on failure.
 def getSCduration(track):
     try:
-        raw = requests.get("http://api.soundcloud.com/tracks?client_id="+SCkey+"&ids="+track)
+        raw = requests.get("http://api.soundcloud.com/tracks?client_id="+
+            SETTINGS["SCKey"]+"&ids="+track)
         trackObjs = raw.json()
         trackObj = trackObjs[0]
+        
         duration = int(float(trackObj["duration"]) / 1000)     # To seconds.
+        
+        # Must be streamable.
+        if not trackObj["streamable"]:
+            return "Track is not streamable..."
     except:
         # NOTICE: This is a bug on SoundCloud's site!
         duration = 4 * 60
@@ -2085,7 +2496,7 @@ def getYTid(vid):
     if find >= 0:
         vid = vid.split("youtu.be/")[1][:11]
         return vid
-        
+    
     if len(vid) == 11:
         return vid
     
@@ -2097,7 +2508,7 @@ def getYTid(vid):
 # Or an error message on failure.
 def getSCid(track):
     # Requires access to the API.
-    if not SCkey:
+    if not SETTINGS["SCKey"]:
         return "A SoundCloud Client ID is required to fetch the track ID from a link..."
     
     # A number may be a track ID.
@@ -2106,14 +2517,22 @@ def getSCid(track):
     try:
         trackID = str(int(track))
         duration = getSCduration(trackID)
+        if type(duration) is str:
+            return duration
     except:
         # Get track ID.
         try:
             # url must be full.
             if track.startswith(("soundcloud.com/", "www.soundcloud.com/")):
                 track = "http://"+track
-            raw = requests.get("http://api.soundcloud.com/resolve?client_id="+SCkey+"&url="+track)
+            raw = requests.get("http://api.soundcloud.com/resolve?client_id="+
+                SETTINGS["SCKey"]+"&url="+track)
             trackObj = raw.json()
+            
+            # Must be streamable.
+            if not trackObj["streamable"]:
+                return "Track is not streamable..."
+            
             trackID = trackObj["id"]
             duration = int(float(trackObj["duration"]) / 1000) # To seconds.
         except Exception as e:
@@ -2122,6 +2541,11 @@ def getSCid(track):
             try:
                 raw = requests.get(track, timeout=15)
                 text = raw.text
+                
+                # Must be streamable.
+                if "\"streamable\":true" not in b:
+                    return "Track is not streamable..."
+                
                 trackID = b.split("soundcloud://sounds:")[1].split('"')[0]
                 duration = b.split('<meta itemprop="duration" content="')[1].split('"')[0]
                 duration = StringifiedToSeconds(duration)
@@ -2172,7 +2596,8 @@ def StringifiedToSeconds(d):
 # Checks if a YT is started, and if it hasn't ended normally.
 def getTimeYT():
     # Nothing playing.
-    if not YTqueue["start"]: return False
+    if not YTqueue["start"]:
+        return False
     
     t = int(time.time())
     
@@ -2195,7 +2620,8 @@ def getTimeYT():
 # Checks if a SC is started, and if it hasn't ended normally.
 def getTimeSC():
     # Nothing playing.
-    if not SCqueue["start"]: return False
+    if not SCqueue["start"]:
+        return False
     
     t = int(time.time())
     
@@ -2214,24 +2640,32 @@ def getTimeSC():
     
     return lapsed
 
-# Update the recaptcha.txt file loaded in HTTP with status.
-def verboseHTTP(string=None):
-    # Delete file.
-    if not string:
+# Write text to file, Overwrites. Removes file if s is empty.
+def printFile(f="", s="", local=False):
+    if not f:
+        return
+    
+    # Directory.
+    if local:
+        d = LOCAL_DIRECTORY
+    else:
+        d = ""
+    
+    if not s:
         try:
-            os.remove("recaptcha.txt")
+            os.remove(d+f)
         except:
             pass
         return
     
     # Append, if file exists.
-    if os.path.isfile("recaptcha.txt"):
-        writing = "a"
-    else:
-        writing = "w"
+    # if os.path.isfile(f):
+    #     writing = "a"
+    # else:
+    #     writing = "w"
     
-    with open("recaptcha.txt", writing) as res:
-        res.write(string)
+    with open(d+f, "w") as res:
+        res.write(s)
 
 # Remove HTML tags from text.
 # Anything between < and >, including arrows.
@@ -2258,45 +2692,15 @@ def removeTags(string=""):
     
     return string
 
-# Checks if the main-room bot is in the room's user list, from TC API.
-# Does reconnect() if not in the room.
-def keepAlive():
-    counter = 0
+# Make a room() and connect() it, with its retry mechanism.
+def makeRoom(nick=None, replaceIndex=None):
+    if not nick:
+        nick = CONN_ARGS["nickname"]
     
-    while True:
-        time.sleep(120)
-        
-        try:
-            room = ROOMS[0]
-            
-            raw = requests.get("http://api.tinychat.com/"+room.room+".xml", timeout=15)
-            text = raw.text
-            
-            # Page not available.
-            if raw.status_code != 200:
-                available = False
-            else:
-                available = True
-            
-            # PW rooms deny this function.
-            pw = text.find('error="Password required"')
-            if pw >= 0:
-                pw = True
-            else:
-                pw = False
-            
-            res = text.find(room.user.nick)
-            
-            if available and not pw and res == -1:
-                counter += 1
-                # Consecutive not-in-room only apply.
-                if counter == 2:
-                    room._chatlog("Bot not in room! Reconnecting...", True)
-                    room.reconnect()
-            else:
-                counter = 0
-        except:
-            pass
+    # Room name, [Nickname], [Username], [Password], [Room password].
+    room = TinychatRoom(CONN_ARGS["room"], nick,
+        CONN_ARGS["username"], CONN_ARGS["password"],
+        replaceIndex=replaceIndex, doConnect=True)
 
 # Starts the bot, and listens to console input.
 def main():
@@ -2307,45 +2711,74 @@ def main():
         if CONN_ARGS["room"]:
             CONN_ARGS["room"] = CONN_ARGS["room"].split()[0]
     
+    SETTINGS["Recaptcha"] = "recaptcha_" + CONN_ARGS["room"] + ".txt"
+    
+    # Apply method injections.
+    if MEDIA:
+        TinychatRoom.getBauth           = MEDIA.getBauth
+        TinychatRoom.createStream       = MEDIA.createStream
+        TinychatRoom.onResult           = MEDIA.onResult
+        TinychatRoom.publish            = MEDIA.publish
+        TinychatRoom.play               = MEDIA.play
+        TinychatRoom.onStatus           = MEDIA.onStatus
+        TinychatRoom.downloadVideo      = MEDIA.downloadVideo
+        TinychatRoom.uploadVideo        = MEDIA.uploadVideo
+        TinychatRoom.uploadAudio        = MEDIA.uploadAudio
+    
+    if PROXY_MODULE:
+        TinychatRoom.setSocket          = PROXY_MODULE.setSocket
+    
+    if BYPASS_ACCESS:
+        TinychatRoom.getRTMPInfo        = BYPASS_ACCESS.getRTMPinfo
+        TinychatRoom.getBauth           = BYPASS_ACCESS.getBauth
+    
     # Make sure there's no connect() event soon after a previous one,
     # In same room and account.
     time.sleep(DELAY)
     
-    # Room name, [Nickname], [Username], [Password], [Room password].
-    room = TinychatRoom(CONN_ARGS["room"], CONN_ARGS["nickname"], 
-        CONN_ARGS["username"], CONN_ARGS["password"])
+    # Create room() and connect(), with its retry mechanism.
+    t = threading.Thread(target=makeRoom, args=())
+    t.daemon = True
+    t.start()
     
-    # start_new_thread(room.connect, ())
-    thread = threading.Thread(target=room.connect, args=())
-    thread.daemon = True
-    thread.start()
-    
-    while not room.connected: time.sleep(1)
-    
-    # Track uncaught disconnection from client-side, for main thread.
-    SETTINGS["KeepAlive"] = threading.Thread(target=keepAlive, args=())
-    SETTINGS["KeepAlive"].daemon = True
-    SETTINGS["KeepAlive"].start()
+    try:
+        while True:
+            time.sleep(0.1)
+            if ROOMS[0].connected:
+                break
+    except (SystemExit, KeyboardInterrupt):
+        return
     
     # Keep alive without input, if no console.
     if not SETTINGS["InteractiveConsole"]:
-        while SETTINGS["Run"]:
-            time.sleep(1)
+        try:
+            while SETTINGS["Run"]:
+                time.sleep(1)
+        except (SystemExit, KeyboardInterrupt):
+            # Try to close connection cleanly; cleanup.
+            try:
+                # Keep to main room reference.
+                ROOMS[0].disconnect()
+            except:
+                pass
+            return
     
     # Handle user input, when connected.
-    while SETTINGS["Run"]:
-        # Transition to reconnection.
-        if SETTINGS["Reconnecting"]:
-            time.sleep(1)
-            continue
-        
-        room = ROOMS[0]
-        
-        # Reset input variables on new input line.
-        userInput = ""
-        charOrd = 0
-        
-        try:
+    try:
+        while SETTINGS["Run"]:
+            # Limit loop speed.
+            time.sleep(0.01)
+            
+            # Keep to main room reference. Halt while no room established.
+            try:
+                room = ROOMS[0]
+            except:
+                continue
+            
+            # Reset input variables on new input line.
+            userInput = ""
+            charOrd = 0
+            
             if not SETTINGS["RunningOnWindows"] or SETTINGS["UserInput"] is None:
                 userInput = raw_input()
             else:
@@ -2372,7 +2805,7 @@ def main():
                     while msvcrt.kbhit():
                         char = msvcrt.getch()
                         charOrd += ord(char)
-                        
+                    
                     if charOrd:
                         # Either normal printable characters, or an event key.
                         if charOrd < 32 or charOrd > 126:
@@ -2397,265 +2830,275 @@ def main():
                             sys.stdout.write(chr(charOrd))
                         # Reset input character.
                         charOrd = 0
-        except SystemExit:
+            
             # Print all queued message.
+            room._chatlogFlush()
+            
+            # Ignore empty input.
+            if len(userInput) == 0:
+                continue
+            
+            # Default to room message.
+            if userInput[0] != "/":
+                room.say(userInput)
+                continue
+            
+            # Available commands.
+            userInput = userInput[1:]
+            
+            if userInput.strip() == "":
+                continue
+            
+            args = userInput.split()
+            
+            cmd = args.pop(0)
+            msg = " ".join(args)
+            
+            if args:
+                target = args[0]
+            else:
+                target = None
+            
             try:
-                room._chatlogFlush()
-                room.disconnect()
-            except:
-                pass
-            sys.exit()
-        except KeyboardInterrupt:
-            # Print all queued message.
-            try:
-                room._chatlogFlush()
-                room.disconnect()
-            except:
-                pass
-            sys.exit()
-        else:
-            # Print all queued message.
-            try:    room._chatlogFlush()
-            except: continue
-                
-        
-        # Ignore empty input.
-        if len(userInput) == 0: continue
-        
-        # Default to room message.
-        if userInput[0] != "/":
-            room.say(userInput)
-            continue
-        
-        # Available commands.
-        userInput = userInput[1:]
-        
-        if userInput.strip() == "": continue
-        
-        args = userInput.split()
-        
-        cmd = args.pop(0)
-        msg = " ".join(args)
-        
-        if args: target = args[0]
-        else:    target = None
-        
-        try:
-            if cmd == "say":
-                if not msg: continue
-                room.say(msg)
-                continue
-            
-            if cmd == "sayto":
-                if not msg: continue
-                
-                res = room.say(" ".join(args[1:]), to=target)
-                
-                if type(res) in {str, unicode}:
-                    print(res)
-                continue
-            
-            if cmd in {"pm", "tell"}:
-                user = args.pop(0)
-                msg = " ".join(args)
-                
-                if not user or not msg: continue
-                
-                res = room.pm(user, msg)
-                
-                if not res: print("User "+user+" not found.")
-                else: SETTINGS["LastPM"] = user
-                continue
-            
-            # Send to the last PM target, again.
-            if cmd == "r":
-                if not SETTINGS["LastPM"]:
-                    print("You haven't PM'd anyone, yet.")
+                if cmd == "say":
+                    if not msg:
+                        continue
+                    room.say(msg)
                     continue
                 
-                msg = " ".join(args)
-                if not msg: continue
-                res = room.pm(SETTINGS["LastPM"], msg)
-                if not res: print("User "+SETTINGS["LastPM"]+" not found.")
-                continue
-            
-            if cmd in {"pmall"}:
-                if not msg: continue
-                
-                i = 0
-                for user in room.users.values():
-                    if user.id == room.user.id: continue    # Skip self.
-                    avoid = ["guest", "newuser"]
-                    if any(x in user.nick for x in avoid): continue     # Skip shit users.
+                if cmd == "sayto":
+                    if not msg:
+                        continue
                     
-                    i += 1
-                    room.pm(user.nick, msg)
-                    time.sleep(0.3) # Avoid looking like a bot to the server by being too fast.
-                room._chatlog("Finished sending PM's to " + str(i) + " users!", True)
-                continue
-            
-            if cmd in "notice":
-                if not msg: continue
-                room.notice(msg)
-                continue
-            
-            if cmd == "userinfo":
-                if not target: continue
-                room.requestUserinfo(target)
-                continue
-               
-            if cmd in {"list", "userlist"}:
-                print("--- Users list: ---")
-                users = room.users.items()
-                
-                i = 0
-                userslist = []
-                for user in users:
-                    i += 1
-                    user = user[1]
+                    res = room.say(" ".join(args[1:]), to=target)
                     
-                    text = "#"+str(i)+". " + str(user.nick) + " ("+str(user.id)+")"
-                    if user.account:
-                        text += " ["+str(user.account)+"]"
-                    if user.mod:
-                        text += " (Moderator)"
-                    if user.admin:
-                        text += " (Admin)"
+                    if type(res) in {str, unicode}:
+                        print(res)
+                    continue
+                
+                if cmd in {"pm", "tell"}:
+                    user = args.pop(0)
+                    msg = " ".join(args)
                     
-                    userslist.append(text)
+                    if not user or not msg:
+                        continue
                     
-                    if i == 100: break
+                    res = room.pm(user, msg)
+                    
+                    if not res:
+                        print("User "+user+" not found.")
+                    else:
+                        SETTINGS["LastPM"] = user
+                    continue
                 
-                # Verbose result.
-                print(" ".join(userslist))
-                print("--- End of Userlist @ "+str(i)+"/"+str(len(users))+" users. ---")
-                continue
-               
-            if cmd in {"nick", "rename"}:
-                if not target: continue
-                room.setNick(target)
-                continue
-               
-            if cmd == "color":
-                prevColor = room.color
-                target = target.lower()
+                # Send to the last PM target, again.
+                if cmd == "r":
+                    if not SETTINGS["LastPM"]:
+                        print("You haven't PM'd anyone, yet.")
+                        continue
+                    
+                    msg = " ".join(args)
+                    if not msg:
+                        continue
+                    res = room.pm(SETTINGS["LastPM"], msg)
+                    if not res:
+                        print("User "+SETTINGS["LastPM"]+" not found.")
+                    continue
                 
-                if not target:
-                    key = room.cycleColor()
-                elif target in TINYCHAT_COLORS:
-                    room.color = TINYCHAT_COLORS[target]
-                    key = target
+                if cmd in {"pmall"}:
+                    if not msg:
+                        continue
+                    
+                    i = 0
+                    for user in room.users.values():
+                        if user.id == room.user.id:
+                            continue    # Skip self.
+                        avoid = ["guest", "newuser"]
+                        if any(x in user.nick for x in avoid):
+                            continue     # Skip shit users.
+                        
+                        i += 1
+                        room.pm(user.nick, msg)
+                        time.sleep(0.3) # Avoid looking like a bot to the server by being too fast.
+                    room._chatlog("Finished sending PM's to " + str(i) + " users!", True)
+                    continue
                 
-                if (key == prevColor):
-                    print("You are already using the color " + key.title() + ".")
-                else:
-                    print("Your text color is now " + key.title() + ".")
-                continue
-               
-            if cmd == "ban":
-                if not target: continue
-                room.ban(target)
-                continue
-            
-            if cmd == "uncam":
-                if not target: continue
-                room.uncam(target)
-                continue
-            
-            if cmd in {"quit", "exit"}:
-                room.disconnect()
-                sys.exit()
-                continue
-            
-            if cmd == "reconnect":
-                room.reconnect()
-                continue
-            
-            if cmd == "yt":
-                room.startYT(target)
-                continue
-            
-            if cmd == "close":
-                room.closeYT()
-                continue
-               
-            if cmd == "sc":
-                room.startSC(target)
-                continue
-               
-            if cmd == "sclose":
-                room.closeSC()
-                continue
-               
-            if cmd == "banlist":
-                if len(room.banlist) == 0: continue
+                if cmd in "notice":
+                    if not msg:
+                        continue
+                    room.notice(msg)
+                    continue
                 
-                print("--- Banlist by nickname: ---")
-                nicks = []
-                for user in room.banlist:
-                    nicks.append(user[1])
-                print(", ".join(nicks))
-                print("--- End of " + str(len(room.banlist)) + " users in Banlist. ---")
-                continue
-               
-            if cmd == "forgive":
-                if not target: continue
-                room.forgiveNick(target)        # Case-sensitive.
-                room.getBanlist()               # Update banlist.
-                continue
-            
-            if cmd == "forgiveall":
-                for pair in room.banlist:
-                    userid = pair[0]
-                    room.forgive(userid)
-                room.getBanlist()               # Update banlist.
-                continue
-               
-            if cmd == "topic":
-                if not msg: continue
-                room.setTopic(msg)
-                continue
-            
-            if cmd in {"publish", "camup"}:
-                room._sendCreateStream()
-                room._sendPublish()
-            
-            if cmd == "global":
-                if not target:
-                    print(globals())
-                else:
+                if cmd in {"list", "userlist"}:
+                    print("--- Users list: ---")
+                    users = room.users.items()
+                    
+                    i = 0
+                    userslist = []
+                    for user in users:
+                        i += 1
+                        user = user[1]
+                        
+                        text = "#"+str(i)+". " + user.nick + " ("+str(user.id)+")"
+                        if user.account:
+                            text += " ["+str(user.account)+"]"
+                        if user.mod:
+                            text += " (Moderator)"
+                        if user.admin:
+                            text += " (Admin)"
+                        
+                        userslist.append(text)
+                        
+                        if i == 100:
+                            break
+                    
+                    # Verbose result.
+                    print(" ".join(userslist))
+                    print("--- End of Userlist @ "+str(i)+"/"+str(len(users))+" users. ---")
+                    continue
+                
+                if cmd in {"nick", "rename"}:
+                    if not target:
+                        continue
+                    room.setNick(target)
+                    continue
+                
+                if cmd == "color":
+                    prevColor = room.color
+                    target = target.lower()
+                    
+                    if not target:
+                        key = room.cycleColor()
+                    elif target in TINYCHAT_COLORS:
+                        room.color = TINYCHAT_COLORS[target]
+                        key = target
+                    
+                    if (key == prevColor):
+                        print("You are already using the color " + key.title() + ".")
+                    else:
+                        print("Your text color is now " + key.title() + ".")
+                    continue
+                
+                if cmd == "ban":
+                    if not target: continue
+                    room.ban(target)
+                    continue
+                
+                if cmd == "uncam":
+                    if not target: continue
+                    room.uncam(target)
+                    continue
+                
+                if cmd in {"quit", "exit"}:
+                    room.disconnect()
+                    SETTINGS["Run"] = False
+                    continue
+                
+                if cmd == "reconnect":
+                    room.reconnect()
+                    continue
+                
+                if cmd == "yt":
+                    room.startYT(target)
+                    continue
+                
+                if cmd == "close":
+                    room.closeYT()
+                    continue
+                
+                if cmd == "sc":
+                    room.startSC(target)
+                    continue
+                
+                if cmd == "sclose":
+                    room.closeSC()
+                    continue
+                
+                if cmd == "banlist":
+                    if len(room.banlist) == 0:
+                        continue
+                    
+                    print("--- Banlist by nickname: ---")
+                    nicks = []
+                    for user in room.banlist:
+                        nicks.append(user[1])
+                    print(", ".join(nicks))
+                    print("--- End of " + str(len(room.banlist)) + " users in Banlist. ---")
+                    continue
+                
+                if cmd == "forgive":
+                    if not target:
+                        continue
+                    room.forgiveNick(target)        # Case-sensitive.
+                    room.getBanlist()               # Update banlist.
+                    continue
+                
+                if cmd == "forgiveall":
+                    for pair in room.banlist:
+                        userid = pair[0]
+                        room.forgive(userid)
+                    room.getBanlist()               # Update banlist.
+                    continue
+                
+                if cmd == "topic":
+                    if not msg:
+                        continue
+                    room.setTopic(msg)
+                    continue
+                
+                if cmd in {"publish", "camup"}:
                     try:
-                        print(globals()[target])
+                        room.createStream()
+                        room.publish()
                     except:
-                        print("Global variable " + target + " not found.")
-                continue
-            
-            if cmd in {"room", "local"}:
-                if not target:
-                    print(room)
-                else:
+                        pass
+                
+                if cmd == "global":
+                    if not target:
+                        print(globals())
+                    else:
+                        try:
+                            print(globals()[target])
+                        except:
+                            print("Global variable " + target + " not found.")
+                    continue
+                
+                if cmd in {"room", "local"}:
+                    if not target:
+                        print(room)
+                    else:
+                        try:
+                            print(getattr(room, target))
+                        except:
+                            print("Room variable " + target + " not found.")
+                    continue
+                
+                if cmd == "note":
+                    if not msg: continue
                     try:
-                        print(getattr(room, target))
+                        room._chatlog(msg, True)
                     except:
-                        print("Room variable " + target + " not found.")
-                continue
-            
-            if cmd == "note":
-                if not msg: continue
-                try:
-                    room._chatlog(msg, True)
-                except:
-                    print(msg)
-                continue
-            
-            if cmd in {"help", "commands"}:
-                print("Available console commands: " + ", ".join(CMDS))
-                continue
+                        print(msg)
+                    continue
+                
+                if cmd in {"help", "commands"}:
+                    print("Available console commands: " + ", ".join(CMDS))
+                    continue
+            except:
+                # Console commands should not fail.
+                traceback.print_exc()
+    except:
+        # Try to close connection cleanly; cleanup.
+        try:
+            room = ROOMS[0]         # Only main room.
+            room._chatlogFlush()
+            room.disconnect()
         except:
-            traceback.print_exc()
+            pass
+        return
 
 # For listing purposes.
-CMDS = ["say", "sayto", "pm", "r", "pmall", "userinfo", "list", "nick",
+CMDS = ["say", "sayto", "pm", "r", "pmall", "who", "list", "nick",
         "color", "ban", "uncam", "quit", "reconnect", "yt", "close", "sc",
         "sclose", "banlist", "forgive", "forgiveall", "topic", "notice",
         "global", "local"]

@@ -1,0 +1,34 @@
+// Settings for Tunebot. Keywords. Links. Online lists.
+// Comment-out anything you aren't using!
+
+// The prefix for all commands.
+CMD             !
+
+// API keys.
+YTKey           
+SCKey                   
+
+defaultTopic    *-=-= LOVE =-=-* ♥
+helpLink        http://is.gd/Qc2bjE
+
+// Overrides. Any SETTINGS[], CONN_ARGS[] (except room), and CONTROLS[] overrides go here.
+
+
+// Each of the lists below links to an online .txt format file,
+// such as an exported Google Docs file link.
+
+Botters         
+
+Commands        
+
+
+Messages        
+
+ASCII           
+
+RandomMessages  
+
+
+AutoBans        
+
+BanWords        
