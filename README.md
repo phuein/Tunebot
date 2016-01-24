@@ -15,15 +15,18 @@ Acknowledgements:
 <br>
 ## Files
 
-**tunebot.py**
+[**Author's Note:** I strongly recommend your own extraneous modules patched into the bot! Updates will the break code.]
+
+
+####tunebot.py
 
 A patched-on module that runs the actual bot, that is responsive in the chat room.
 
-**tinychat.py**
+####tinychat.py
 
 The core module responsible for interacting with Tinychat, handling the room object, users objects, and messages.
 
-**rtmp**
+####rtmp
 
 Handles the RTMP connection and communication, using the AMF encoder/decoder module. This is a Python remake of the original C library.
 
