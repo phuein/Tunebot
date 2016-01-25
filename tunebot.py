@@ -3460,6 +3460,7 @@ def delayedBan(room, user):
 # Extended join handling. From joins event, too. Bot's own join, too.
 def onJoinHandle(room, user, joins, myself):
     ## Initialize extra user properties. Expected to happen before anything else! ##
+    user.botter = False
     # Ignored property, for using bot commands.
     user.ignored = False
     
@@ -3481,8 +3482,6 @@ def onJoinHandle(room, user, joins, myself):
     # Botter by account.
     if isBotter("@" + user.account):
         user.botter = True
-    else:
-        user.botter = False
     
     # Modders.
     if isBotter("*" + user.account):
