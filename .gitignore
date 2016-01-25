@@ -223,5 +223,5 @@ recaptcha.txt
 setup.py
 wsgi.py
 requirements.txt
-
+*.connected
 README.md

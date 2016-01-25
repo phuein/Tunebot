@@ -360,7 +360,7 @@ class party():
             PARTY.mode = False
             
             # Remove it.
-            del self.list[correctedIndex]
+            del self.list[track1]
             
             # Update nextIndex.
             if track1 < self.nextIndex:
@@ -375,8 +375,8 @@ class party():
                     str(self.nextIndex + 1) + ")")
         
         # Tracks range.
-        # Simple case of removing entire playlist.
         if track1 == track2 == None:
+            # Simple case of removing entire playlist.
             self.list = []
             self.nextIndex = 0
         else:
@@ -393,10 +393,10 @@ class party():
             # Pause queue.
             PARTY.mode = False
             
-            # Delete items from playlist or from its subplaylist.
+            # Delete items from playlist.
             for i in range(track2 - 1, track1 - 1, -1):
                 # Null it.
-                self.list[correctedIndex] = None
+                self.list[i] = None
                 
                 # Update nextIndex.
                 if i < self.nextIndex:
