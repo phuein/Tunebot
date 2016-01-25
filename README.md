@@ -15,7 +15,7 @@ Acknowledgements:
 <br>
 ## Files
 
-[**Author's Note:** I strongly recommend your own extraneous modules, then patched into the bot! Updates will break the code.]
+[**Author's Note:** Use your own extraneous modules, then patched into the bot! Updates will break the code.]
 
 
 ####tunebot.py
