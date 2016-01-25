@@ -54,10 +54,10 @@ class DataTypes:
     SET_PEER_BANDWIDTH  = 6
     AUDIO_MESSAGE       = 8
     VIDEO_MESSAGE       = 9
-    # DATA_MESSAGE      = 18    # 15
+    DATA_MESSAGE        = 18    # 15
     SHARED_OBJECT       = 19    # 16
     COMMAND             = 20    # 17
-    # AGGREGATE_MESSAGE = 22
+    AGGREGATE_MESSAGE   = 22
 
 class SOEventTypes:
     """ Represents an enumeration of the shared object event types. """

@@ -641,10 +641,23 @@ class TinychatRoom():
             
             # Handle RTMP packets.
             try:
-                # if msg['msg'] == rtmp_protocol.DataTypes.USER_CONTROL:
-                #     self._chatlog("USER CONTROL "+str(msg['event_type'])+" "+str(msg['event_data']), True)
+                if msg['msg'] == rtmp_protocol.DataTypes.USER_CONTROL:
+                    # Ping, normally.
+                    # self._chatlog("USER CONTROL: "+str(msg['event_type'])+", "+str(msg['event_data'])+".", True)
+                    return
                 
-                if msg['msg'] == rtmp_protocol.DataTypes.VIDEO_MESSAGE:
+                elif msg['msg'] == rtmp_protocol.DataTypes.SHARED_OBJECT:
+                    # Useless.
+                    # self._chatlog("SHARED OBJECT: "+str(msg['obj_name'])+", "+str(msg['curr_version'])+
+                    #     ", "+msg['flags']+", "+msg['events']+".", True)
+                    return
+                
+                elif msg['msg'] == rtmp_protocol.DataTypes.DATA_MESSAGE:
+                    # Useless.
+                    # self._chatlog("DATA MESSAGE: "+str(msg['event_data'])+".", True)
+                    return
+                
+                elif msg['msg'] == rtmp_protocol.DataTypes.VIDEO_MESSAGE:
                     try:
                         pass
                         # self.videoDatas[msg['streamid']].append(msg['control'], msg['video'])
@@ -1086,10 +1099,7 @@ class TinychatRoom():
                 text = raw.text
                 
                 # Page not available.
-                if raw.status_code != 200:
-                    available = False
-                else:
-                    available = True
+                available = raw.status_code == 200
                 
                 # PW rooms deny this function.
                 ps = 'error="Password required"' in text
@@ -1465,19 +1475,20 @@ class TinychatRoom():
         
         # Respond to command.
         if cmd == "mbs":
-            # Track the video (for !py mode.)
+            # Track the video (for queue mode.)
             try:
+                t = int(time.time())
+                YTqueue["start"]    = t
+                YTqueue["skip"]     = skip
+                YTqueue["paused"]   = 0
+                YTqueue["current"]  = vid
+                
                 duration = getYTduration(vid)
                 
                 if not duration:
                     raise Exception()
                 
-                t = int(time.time())
-                YTqueue["start"]    = t
-                YTqueue["skip"]     = skip
-                YTqueue["length"]   = duration
-                YTqueue["paused"]   = 0
-                YTqueue["current"]  = vid
+                YTqueue["length"] = duration
             except:
                 pass
             return
@@ -1543,20 +1554,21 @@ class TinychatRoom():
         
         # Respond to command.
         if cmd == "mbs":
-            # Track the song (for !py mode.)
+            # Track the song (for queue mode.)
             try:
+                t = int(time.time())
+                SCqueue["start"]    = t
+                SCqueue["skip"]     = skip
+                SCqueue["paused"]   = 0
+                SCqueue["current"]  = track
+                
                 duration = getSCduration(track)
                 
                 # Unstreamable track.
                 if type(duration) is str:
                     raise Exception()
                 
-                t = int(time.time())
-                SCqueue["start"]    = t
-                SCqueue["skip"]     = skip
                 SCqueue["length"]   = duration
-                SCqueue["paused"]   = 0
-                SCqueue["current"]  = track
             except:
                 pass
             return
@@ -1896,7 +1908,8 @@ class TinychatRoom():
     # Assumes user exists.
     def sendYT(self, user):
         cmd = "mbs"
-        if (YTqueue["paused"]): cmd = "mbsp"
+        if (YTqueue["paused"]):
+            cmd = "mbsp"
         
         # Bot must have played something, already.
         if not YTqueue["history"]:
@@ -1913,14 +1926,15 @@ class TinychatRoom():
         if not skip:
             return
         
-        self._sendCommand("privmsg", [u"" + self._encodeMessage("/" + cmd +" youTube " + vid + " " + str(skip*1000)),
-                            "#0" + ",en", "n" + str(user.id) + "-" + user.nick])
+        self._sendCommand("privmsg", [u"" + self._encodeMessage("/" + cmd +" youTube " + 
+            vid + " " + str(skip*1000)), "#0" + ",en", "n" + str(user.id) + "-" + user.nick])
     
     # Sends a start-SC msg with current time and pause state.
     # Assumes user exists.
     def sendSC(self, user):
         cmd = "mbs"
-        if (SCqueue["paused"]): cmd = "mbsp"
+        if (SCqueue["paused"]):
+            cmd = "mbsp"
         
         # Bot must have played something, already.
         if not SCqueue["history"]:
@@ -1937,8 +1951,8 @@ class TinychatRoom():
         if not skip:
             return
         
-        self._sendCommand("privmsg", [u"" + self._encodeMessage("/" + cmd +" soundCloud " + track + " " + str(skip*1000)),
-                            "#0" + ",en", "n" + str(user.id) + "-" + user.nick])
+        self._sendCommand("privmsg", [u"" + self._encodeMessage("/" + cmd +" soundCloud " + 
+            track + " " + str(skip*1000)), "#0" + ",en", "n" + str(user.id) + "-" + user.nick])
     
     # Try to play a YT video, or relegate to startSC().
     # Returns True on success.
@@ -1992,9 +2006,12 @@ class TinychatRoom():
         if not YTqueue["history"] or YTqueue["history"][-1] != vid:
             YTqueue["history"].append(vid)
         
-        # Clear out the previous state.
-        YTqueue["start"] = 0
-        YTqueue["paused"] = 0
+        # Reset the previous state.
+        t = int(time.time())
+        YTqueue["start"]    = t
+        YTqueue["paused"]   = 0
+        YTqueue["skip"]     = skip
+        YTqueue["current"]  = vid
         
         # Further requires an API key.
         if not SETTINGS["YTKey"]:
@@ -2006,11 +2023,7 @@ class TinychatRoom():
         if type(duration) is str:
             return duration
         
-        t = int(time.time())
-        YTqueue["start"]    = t
-        YTqueue["length"]   = duration
-        YTqueue["skip"]     = skip
-        YTqueue["current"]  = vid
+        YTqueue["length"] = duration
         return True
     
     def closeYT(self):
@@ -2027,7 +2040,8 @@ class TinychatRoom():
         # In seconds.
         skip = getTimeYT()
         
-        if not skip: return
+        if not skip:
+            return
         
         self.say("/mbpl youTube " + str(skip*1000))
         
@@ -2097,7 +2111,7 @@ class TinychatRoom():
         
         t = int(time.time())
         SCqueue["start"]    = t
-        SCqueue["length"]   = duration
+        SCqueue["length"]   = duration      # Will be 0, if no duration from API.
         SCqueue["skip"]     = skip
         SCqueue["current"]  = trackID
         SCqueue["paused"]   = 0
@@ -2116,7 +2130,8 @@ class TinychatRoom():
     def resumeSC(self):
         skip = getTimeSC()
         
-        if not skip: return
+        if not skip:
+            return
         
         self.say("/mbpl soundCloud " + str(skip*1000))
         
@@ -2485,7 +2500,8 @@ def getSCduration(track):
 def getYTid(vid):
     vid = vid.strip()
     
-    if vid == "": return False
+    if vid == "":
+        return False
     
     find = vid.find("v=")
     if find >= 0:
@@ -2507,19 +2523,24 @@ def getYTid(vid):
 # Returns [trackID, duration] first as str(), second as int() in seconds,
 # Or an error message on failure.
 def getSCid(track):
-    # Requires access to the API.
-    if not SETTINGS["SCKey"]:
-        return "A SoundCloud Client ID is required to fetch the track ID from a link..."
-    
     # A number may be a track ID.
     # Expected from an automated lister in the bot;
     # Users are /not/ expected to give track IDs!
     try:
         trackID = str(int(track))
-        duration = getSCduration(trackID)
-        if type(duration) is str:
-            return duration
+        
+        # Requires access to the API.
+        if SETTINGS["SCKey"]:
+            duration = getSCduration(trackID)
+            if type(duration) is str:
+                return duration
+        else:
+            duration = 0
     except:
+        # Requires access to the API.
+        if not SETTINGS["SCKey"]:
+            return "A SoundCloud Client ID is required to fetch the track ID from a link..."
+        
         # Get track ID.
         try:
             # url must be full.
@@ -2605,9 +2626,10 @@ def getTimeYT():
     lapsed = t - YTqueue["start"] + YTqueue["skip"]
     
     # Check that the video hasn't ended by itself.
-    if not YTqueue["paused"] and lapsed > YTqueue["length"]:
-        YTqueue["start"] = 0
-        return False
+    if YTqueue["length"]:
+        if not YTqueue["paused"] and lapsed > YTqueue["length"]:
+            YTqueue["start"] = 0
+            return False
     
     # Ignore time it was paused.
     if YTqueue["paused"]:
@@ -2629,9 +2651,10 @@ def getTimeSC():
     lapsed = t - SCqueue["start"] + SCqueue["skip"]
     
     # Check that the video hasn't ended by itself.
-    if not SCqueue["paused"] and lapsed > SCqueue["length"]:
-        SCqueue["start"] = 0
-        return False
+    if SCqueue["length"]:
+        if not SCqueue["paused"] and lapsed > SCqueue["length"]:
+            SCqueue["start"] = 0
+            return False
     
     # Ignore time it was paused.
     if SCqueue["paused"]:

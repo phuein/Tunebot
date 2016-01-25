@@ -2218,7 +2218,7 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
         s = " ".join(userArgs)  # Remake query.
         
         # Either a SC track ID, or YT title query.
-        title = ""
+        title = "Track"
         try:
             num = int(s.strip())
             if num < SC_MIN_ID:
