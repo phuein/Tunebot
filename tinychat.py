@@ -1482,6 +1482,7 @@ class TinychatRoom():
                 YTqueue["skip"]     = skip
                 YTqueue["paused"]   = 0
                 YTqueue["current"]  = vid
+                YTqueue["length"]   = 0
                 
                 duration = getYTduration(vid)
                 
@@ -1561,6 +1562,7 @@ class TinychatRoom():
                 SCqueue["skip"]     = skip
                 SCqueue["paused"]   = 0
                 SCqueue["current"]  = track
+                SCqueue["length"]   = 0
                 
                 duration = getSCduration(track)
                 
@@ -2012,6 +2014,7 @@ class TinychatRoom():
         YTqueue["paused"]   = 0
         YTqueue["skip"]     = skip
         YTqueue["current"]  = vid
+        YTqueue["length"]   = 0
         
         # Further requires an API key.
         if not SETTINGS["YTKey"]:
