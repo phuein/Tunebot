@@ -132,7 +132,7 @@ SETTINGS = {
     "MaxCharsMsg":          110,
     "MaxCharsPM":           90,
     "MaxCharsNotice":       160,            # 360 total max per /notice.
-    "Command":              False           # Execute command at joinsdone() and leave.
+    "Instructions":         False           # Execute module at joinsdone().
 }
 
 # The Login and RTMP connections arguments.
@@ -216,6 +216,12 @@ try:
                 SETTINGS["NoRecaptcha"] = bool(int(val))
             except:
                 print("Argument NORECAPTCHA must be 0 or 1, only.")
+        
+        elif name == "instructions":
+            try:
+                SETTINGS["Instructions"] = bool(int(val))
+            except:
+                print("Argument INSTRUCTIONS must be 0 or 1, only.")
         
         elif name == "settings":
             try:
@@ -459,6 +465,8 @@ class TinychatUser():
         self.broadcasting = False   # Can't tell if stopped broadcasting, unless closed by mod.
         self.device = ""            # Tinychat identifies Android & iPhone users.
         self.pro = False            # User is on a Pro account.
+        # self.btype = ''
+        # self.stype = 0
         self.lurking = False        # User is on "guest" mode, and can't send anything to room.
         
         self.gp = 0                 # Giftpoints. int()
@@ -859,9 +867,10 @@ class TinychatRoom():
                     if cmd == "_result":
                         pars = msg['command'][1:]
                         # self._chatlog("_result: "+str(pars))
-                        streamID = pars[0]
+                        localStreamID   = pars[0]
+                        remoteStreamID  = pars[2]
                         try:
-                            self.onResult(streamID)
+                            self.onResult(localStreamID, remoteStreamID)
                         except:
                             pass
                         continue
@@ -1140,13 +1149,13 @@ class TinychatRoom():
         user.nick = u.nick
         user.account = u.account
         user.mod = u.mod
-        user.pro = u.pro
+        if u.stype:
+            user.pro = True
         user.admin = u.own
         user.gp = u.gp
         user.alevel = u.alevel
         user.broadcasting = u.bf
         user.lurking = u.lf
-        
         s = user.nick + " ["+str(user.id)+"]"
         if user.lurking:
             s += " (Guest-Mode)"
@@ -1184,7 +1193,7 @@ class TinychatRoom():
     # After finishing all the connection events. Ready for action!
     def onJoinsdone(self):
         # Internal instructions for further handling.
-        if self.instructions or INSTRUCTIONS:
+        if self.instructions or (SETTINGS["Instructions"] and INSTRUCTIONS):
             doInstructions(self)
         
         # Keepalive.
@@ -2752,6 +2761,8 @@ def main():
     if MEDIA:
         TinychatRoom.getBauth           = MEDIA.getBauth
         TinychatRoom.createStream       = MEDIA.createStream
+        TinychatRoom.closeStream        = MEDIA.closeStream
+        TinychatRoom.deleteStream       = MEDIA.deleteStream
         TinychatRoom.onResult           = MEDIA.onResult
         TinychatRoom.publish            = MEDIA.publish
         TinychatRoom.play               = MEDIA.play
@@ -2766,6 +2777,9 @@ def main():
     if BYPASS_ACCESS:
         TinychatRoom.getRTMPInfo        = BYPASS_ACCESS.getRTMPinfo
         TinychatRoom.getBauth           = BYPASS_ACCESS.getBauth
+    
+    if INSTRUCTIONS:
+        INSTRUCTIONS.load(globals())
     
     # Make sure there's no connect() event soon after a previous one,
     # In same room and account.
