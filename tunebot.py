@@ -120,23 +120,29 @@ class lists():
             "banWords": []
         }
     
-    # Adds an item to a list. Expects only valid values! (May add duplicates!)
+    # Adds an item to a list. Expects valid list name.
+    # Won't add duplicates.
     def addItem(self, lst, item):
         # Get list by name.
         l = getattr(self, lst)
         
-        l.append(item)
+        if item not in l:
+            l.append(item)
         # Match in session list.
-        self.sessionLists[lst].append(item)
+        if item not in self.sessionLists[lst]:
+            self.sessionLists[lst].append(item)
     
-    # Removes an item from a list. Expects only valid values!
+    # Removes an item from a list. Expects valid list name.
+    # Does nothing, if not found.
     def removeItem(self, lst, item):
         # Get list by name.
         l = getattr(self, lst)
         
-        l.remove(item)
+        if item in l:
+            l.remove(item)
         # Match in session list.
-        self.sessionLists[lst].remove(item)
+        if item in self.sessionLists[lst]:
+            self.sessionLists[lst].remove(item)
     
     # Clearing a list means clearing the session list, only.
     # The file list is reloaded, anyways, so clearing it has little effect.
@@ -3452,7 +3458,7 @@ def operCommands(room, userCmd, userArgsStr, userArgs, target, user):
 
 # Delayed ban, so bots can change nick in time.
 def delayedBan(room, user):
-    time.sleep(2.5)
+    time.sleep(2)
     if not isBotter(user) and not user.mod:
         room.ban(user)
         room.forgive(user)
@@ -3464,15 +3470,8 @@ def onJoinHandle(room, user, joins, myself):
     # Ignored property, for using bot commands.
     user.ignored = False
     
-    # AccountMode, kicks all non-logged in users, except lurkers (cant send anything to room.)
-    if CONTROLS["AccountMode"] and not user.account and not user.lurking:
-        time.sleep(0.1)
-        room.ban(user)
-        room.forgive(user)
-        return
-    
     # Check account.
-    if user.account in LISTS.accountBans:
+    if user.account and user.account in LISTS.accountBans:
         time.sleep(0.1)
         room.ban(user)
         room._chatlog(user.nick + " [" + str(user.id) + "] (" + user.account +
@@ -3500,8 +3499,17 @@ def onJoinHandle(room, user, joins, myself):
         room.forgive(user)
         return
     
-    # Private mode.
-    if CONTROLS["PrivateMode"] and not isBotter(user) and not user.mod:
+    # AccountMode, kicks all non-logged in users, except lurkers (cant send anything to room)
+    # and botters, and those already in the room.
+    if (CONTROLS["AccountMode"] and not user.account and not user.lurking and not joins
+        and not isBotter(user)):
+        time.sleep(0.1)
+        room.ban(user)
+        room.forgive(user)
+        return
+    
+    # Private mode. Doesn't kick anyone in the room, unless they act.
+    if CONTROLS["PrivateMode"] and not isBotter(user) and not user.mod and not joins:
         t = threading.Thread(target=delayedBan, args=(room, user,))
         t.daemon = True  # Exits when main thread quits.
         t.start()

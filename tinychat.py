@@ -19,6 +19,7 @@ import re
 
 # Handle linux SIGTERM; cleanup.
 def signalHandler(signum, frame):
+    print "Signal handler called with signal "+str(signum)+"."
     # Print all queued messages. Cleanup properly.
     try:
         room = ROOMS[0]         # Only main room.
@@ -315,6 +316,13 @@ try:
 except:
     PROXY_MODULE = None
     PROXY = None
+
+# Instructions module.
+try:
+    import instructions as INSTRUCTIONS
+    doInstructions = INSTRUCTIONS.do
+except:
+    INSTRUCTIONS = None
 
 # Running on a Windows machine, or otherwise.
 if os.name == "nt":
@@ -1175,18 +1183,19 @@ class TinychatRoom():
     
     # After finishing all the connection events. Ready for action!
     def onJoinsdone(self):
-        if self.nick:
-            time.sleep(1.4)     # Humane delay.
-            self.setNick()
-        
         # Internal instructions for further handling.
-        if self.instructions:
+        if self.instructions or INSTRUCTIONS:
             doInstructions(self)
         
         # Keepalive.
         t = threading.Thread(target=self._keepAlive, args=())
         t.daemon = True
         t.start()
+        
+        # Set first nick.
+        if self.nick and self.user.nick.startswith("guest-"):
+            time.sleep(1.4)     # Humane delay.
+            self.setNick()
         
         # Instructions or further handling.
         if SETTINGS['onJoinsdoneExtend']:
