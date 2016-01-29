@@ -57,7 +57,8 @@ The tunebot module **adds** these **optional** arguments:
 - snap=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Autoban unknowns taking screenshots.)
 - private=0/1 &nbsp;&nbsp; (Autoban all unknowns on join.)
 
-**For example, run it with:** python tunebot.py room=MYROOM user=MYUSER pass=MYPASS nick=Tunebot settings=settings.txt
+**For example, run it with:**<br>
+python tunebot.py room=MYROOM user=MYUSER pass=MYPASS nick=Tunebot settings=settings.txt
 
 <br>
 ## Settings
