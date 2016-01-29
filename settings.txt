@@ -2,33 +2,36 @@
 // Comment-out anything you aren't using!
 
 // The prefix for all commands.
-CMD             !
+CMD                 !
 
-// API keys.
-YTKey           
-SCKey                   
+// API keys. Default from TC.
+YTKey               AIzaSyCPQe4gGZuyVQ78zdqf9O5iEyfVLPaRwZg
+SCKey               b85334a9b08edb6778a50d965444fd39
 
-defaultTopic    *-=-= LOVE =-=-* ♥
-helpLink        http://is.gd/Qc2bjE
+defaultTopic        *-=-= LOVE =-=-* ♥
+helpLink            http://is.gd/Qc2bjE
 
 // Overrides. Any SETTINGS[], CONN_ARGS[] (except room), and CONTROLS[] overrides go here.
-
+nickname            Tunebox
+//username            
+//password            
+ReconnectOnBan      True
 
 // Each of the lists below links to an online .txt format file,
-// such as an exported Google Docs file link.
+// such as an exported Google Docs text file link.
 
-Botters         
+Botters             
 
-Commands        
-
-
-Messages        
-
-ASCII           
-
-RandomMessages  
+Commands            
 
 
-AutoBans        
+Messages            
 
-BanWords        
+ASCII               
+
+RandomMessages      
+
+
+AutoBans            
+
+BanWords            
