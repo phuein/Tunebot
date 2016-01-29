@@ -57,13 +57,13 @@ The tunebot module **adds** these **optional** arguments:
 - snap=0/1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Autoban unknowns taking screenshots.)
 - private=0/1 &nbsp;&nbsp; (Autoban all unknowns on join.)
 
-**For example, run it with:** python tunebot.py room=myroom user=myuser pass=mypass nick=bot
+**For example, run it with:** python tunebot.py room=MYROOM user=MYUSER pass=MYPASS nick=Tunebot settings=settings.txt
 
 <br>
 ## Settings
 
-The top directory of the bot has a **settings/** directory. In the code, you can see a lot of instructions come from simple .txt files in it.
+In the bot's directory, the settings.txt file handles all the one-line instructions. Any SETTINGS[] override can be applied there. The lists links expect **a link** to a TXT file format. For example, do "Export as TXT" in Google Docs, and copy the download URL from your browser downloads window.
 
-The empty files in the settings/ directory expect **a link** to a TXT file format. For example, do "Export as TXT" in Google Docs, and copy the download URL from your browser downloads window.
+The top directory of the bot has a **settings/** directory. In the code, the local (not online) instructions come from simple .txt files inside it.
 
 <br>
