@@ -17,8 +17,10 @@
 import tinychat
 
 import requests                                 # http://www.python-requests.org/
-
-requests.packages.urllib3.disable_warnings()    # For python < 2.7.9
+try:
+    requests.packages.urllib3.disable_warnings()    # For python < 2.7.9
+except:
+    pass
 
 import random
 import traceback                                # https://docs.python.org/2/library/traceback.html
