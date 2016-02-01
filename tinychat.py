@@ -6,7 +6,10 @@
 from rtmp import rtmp_protocol
 
 import requests             # http://www.python-requests.org/
-requests.packages.urllib3.disable_warnings() # For python < 2.7.9
+try:
+    requests.packages.urllib3.disable_warnings()    # For python < 2.7.9
+except:
+    pass
 
 import random
 import os, sys, signal
@@ -197,12 +200,6 @@ try:
         # All the module's connections go through proxy.
         elif name == "proxy":
             SETTINGS["PROXY"] = val
-        
-        elif name == "command":
-            try:
-                SETTINGS["Command"] = bool(int(val))
-            except:
-                SETTINGS["Command"] = val
         
         # Reconnect on ban.
         elif name == "reonban":
@@ -1811,7 +1808,8 @@ class TinychatRoom():
                     num = ord(char)
                     if num < 32 or num > 126:
                         # Special character.
-                        encodedMsg += quote_plus(char)
+                        # encodedMsg += quote_plus(char)
+                        encodedMsg += quote_plus(char.encode("utf-8", "replace"), safe='/')
                     elif num == 37:
                         encodedMsg += "%25"
                     elif num == 32:
@@ -1820,11 +1818,7 @@ class TinychatRoom():
                         # Normal character.
                         encodedMsg += char
                 except:
-                    # Special character.
-                    try:
-                        encodedMsg += quote_plus(char.encode("utf-8", "replace"), safe='/')
-                    except:
-                        pass
+                    pass
             
             self._sendCommand("owner_run", [u"notice" + encodedMsg])
         
