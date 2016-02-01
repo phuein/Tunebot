@@ -1140,6 +1140,8 @@ def playTrack(room, track, skip=0):
     if CONTROLS["playLock"]:
         return
     
+    qMode = PARTY.mode
+    
     # Pause queue.
     PARTY.mode = False
     # Lock play.
@@ -1149,8 +1151,8 @@ def playTrack(room, track, skip=0):
     
     # Release play.
     CONTROLS["playLock"] = False
-    # Unpause queue.
-    PARTY.mode = True
+    # Restore queue.
+    PARTY.mode = qMode
     
     return res
 
