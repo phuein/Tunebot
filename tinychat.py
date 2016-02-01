@@ -1874,6 +1874,7 @@ class TinychatRoom():
     # Bans a user by nick, userid, or user obj, and returns True.
     # Returns False if user not found.
     # Returns error message if user is oper or botter.
+    # Will NEVER ban itself (it is possible, yes.)
     def ban(self, user, override=False):
         if not user:
             return False
@@ -1882,6 +1883,10 @@ class TinychatRoom():
             user = self._getUser(user)
             if not user:
                 return False
+        
+        # Except self.
+        if user is self.user:
+            return False
         
         if not override and user.mod:
             return "I do not ban moderators..."
@@ -2787,7 +2792,7 @@ def main():
     try:
         while True:
             time.sleep(0.1)
-            if ROOMS[0].connected:
+            if ROOMS and ROOMS[0].connected:
                 break
     except (SystemExit, KeyboardInterrupt):
         return
