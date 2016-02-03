@@ -325,6 +325,7 @@ try:
     import instructions as INSTRUCTIONS
     doInstructions = INSTRUCTIONS.do
 except:
+    traceback.print_exc()
     INSTRUCTIONS = None
 
 # Running on a Windows machine, or otherwise.
@@ -1333,9 +1334,8 @@ class TinychatRoom():
             except:
                 traceback.print_exc()
         
-        # Forgive from queue, if found.
+        # Forgive all.
         if len(self.forgives) == 1 and self.forgives[0] is True:
-            # Forgive all.
             # i = 0
             for user in self.banlist:
                 userID = int(user[0])
@@ -1348,12 +1348,13 @@ class TinychatRoom():
             # If done forgiving all, then empty list.
             if len(self.banlist) == 0:
                 self.forgives = []
+        
+        # Forgive any in forgives list.
         elif len(self.forgives) > 0:
             i = 0
             # j = 0
             for nick in self.forgives:
-                # First forgives all partial results.
-                # Second forgives only first result.
+                # Forgive all partial matches.
                 if type(nick) is list:
                     word = nick[0]
                     
@@ -1367,6 +1368,7 @@ class TinychatRoom():
                             if self.forgives[i]:
                                 self.forgives[i] = None
                             # j += 1
+                # Forgive all exact matches (multiple instances of same nick.)
                 else:
                     for user in self.banlist:
                         userID = int(user[0])
@@ -1375,7 +1377,7 @@ class TinychatRoom():
                         if userNick == nick:
                             self.forgive(userID)
                             self.forgives[i] = None
-                            break
+                            # break
                 i += 1
                 # Limit.
                 # if j > 50: break
