@@ -216,9 +216,9 @@ try:
         
         elif name == "instructions":
             try:
-                SETTINGS["Instructions"] = bool(int(val))
+                SETTINGS["Instructions"] = int(val)
             except:
-                print("Argument INSTRUCTIONS must be 0 or 1, only.")
+                print("Argument INSTRUCTIONS must be an integer number.")
         
         elif name == "settings":
             try:
@@ -649,6 +649,8 @@ class TinychatRoom():
                     self._chatlog("Can't read next()! Reconnecting...", True)
                     self.reconnect()
                     break
+                # Otherwise, skip it.
+                continue
             else:
                 # Reset count on success.
                 self.nextFails = 0
