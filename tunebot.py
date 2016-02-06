@@ -1410,7 +1410,7 @@ def pmCommands(room, user, msg):
         return
     
     if userCmd == "uptime":
-        string = formatUptime(time.time() - START_TIME)
+        string = formatTime(time.time() - START_TIME)
         room.pm(user, "I have been alive for *" + string + ".*")
         return
     
@@ -2624,7 +2624,7 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
         return
     
     if userCmd == "uptime":
-        string = formatUptime(time.time() - START_TIME)
+        string = formatTime(time.time() - START_TIME)
         room.notice("I have been alive for *" + string + ".*")
         return
     
