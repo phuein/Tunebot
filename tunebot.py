@@ -1896,56 +1896,6 @@ def publicCommands(room, userCmd, userArgsStr, userArgs, target, user):
         room.notice("*" + curUser.nick + " desu!~*")
         return
     
-    if userCmd in {"toke", "tokes", "rip", "rips"}:
-        # Tokes now, if not active.
-        # If active, it will fall in further check.
-        if not target:
-            if not TOKES.mode:
-                room.notice("Pack up! *TOKES NOW.*")
-                return
-        
-        # Stop and remove tokes count.
-        if TOKES.mode and target == CMD:
-            TOKES.clearOut()
-            room.notice("Tokes counter stopped and cleared.")
-            return
-        
-        # Ignore more requests, if counter already running.
-        if TOKES.mode:
-            mins = TOKES.until()
-            room.notice("Tokes counter is already up and will finish in "+str(mins)+" "+
-                pluralize("minute", mins)+(", and is paused" if TOKES.paused else "")
-                +". Do *"+CMD+"JOIN* to toke together.")
-            return
-        
-        # Start new counter.
-        try:
-            end = int(target)
-            if not 1 <= end <= 20:
-                raise Exception()
-        except:
-            room.notice("Give me a time in minutes, between 1 and 20, until tokes...")
-            return
-        
-        # Optional periodical announcements.
-        announce = 0
-        if len(userArgs) > 1:
-            try:
-                announce = int(userArgs[1])
-            except:
-                room.notice("Give me a time in minutes, to announce until tokes, periodically...")
-                return
-        
-        TOKES.startCount(room, end, announce)
-        
-        TOKES.joined.append(user.nick)
-        
-        # Verbose.
-        mins = TOKES.until()
-        room.notice(str(mins) + " " + pluralize("minute", mins) + " until tokes! Type *" +
-            CMD + "JOIN* in chat to toke together. (Do *"+CMD+"tokes "+CMD+"* to clear it out.)")
-        return
-    
     # Join on tokes.
     if userCmd == "join":
         if not TOKES.mode:
@@ -2744,6 +2694,56 @@ def botterCommands(room, userCmd, userArgsStr, userArgs, target, user):
             room.notice(target + " is identified as a *botter*!")
         else:
             room.notice(target + " is *not* identified as a botter.")
+        return
+    
+    if userCmd in {"toke", "tokes", "rip", "rips"}:
+        # Tokes now, if not active.
+        # If active, it will fall in further check.
+        if not target:
+            if not TOKES.mode:
+                room.notice("Pack up! *TOKES NOW.*")
+                return
+        
+        # Stop and remove tokes count.
+        if TOKES.mode and target == CMD:
+            TOKES.clearOut()
+            room.notice("Tokes counter stopped and cleared.")
+            return
+        
+        # Ignore more requests, if counter already running.
+        if TOKES.mode:
+            mins = TOKES.until()
+            room.notice("Tokes counter is already up and will finish in "+str(mins)+" "+
+                pluralize("minute", mins)+(", and is paused" if TOKES.paused else "")
+                +". Do *"+CMD+"JOIN* to toke together.")
+            return
+        
+        # Start new counter.
+        try:
+            end = int(target)
+            if not 1 <= end <= 20:
+                raise Exception()
+        except:
+            room.notice("Give me a time in minutes, between 1 and 20, until tokes...")
+            return
+        
+        # Optional periodical announcements.
+        announce = 0
+        if len(userArgs) > 1:
+            try:
+                announce = int(userArgs[1])
+            except:
+                room.notice("Give me a time in minutes, to announce until tokes, periodically...")
+                return
+        
+        TOKES.startCount(room, end, announce)
+        
+        TOKES.joined.append(user.nick)
+        
+        # Verbose.
+        mins = TOKES.until()
+        room.notice(str(mins) + " " + pluralize("minute", mins) + " until tokes! Type *" +
+            CMD + "JOIN* in chat to toke together. (Do *"+CMD+"tokes "+CMD+"* to clear it out.)")
         return
     
     # No command match.
