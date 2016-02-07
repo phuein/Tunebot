@@ -325,7 +325,7 @@ try:
     import instructions as INSTRUCTIONS
     doInstructions = INSTRUCTIONS.do
 except:
-    traceback.print_exc()
+    # traceback.print_exc()
     INSTRUCTIONS = None
 
 # Running on a Windows machine, or otherwise.
