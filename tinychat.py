@@ -463,8 +463,8 @@ class TinychatUser():
         self.broadcasting = False   # Can't tell if stopped broadcasting, unless closed by mod.
         self.device = ""            # Tinychat identifies Android & iPhone users.
         self.pro = False            # User is on a Pro account.
-        # self.btype = ''
-        # self.stype = 0
+        # self.btype = ''           # 'android', 'ios', '' is computer user.
+        # self.stype = 0            # 10 is PRO, 20 is EXTREME, 0 is normal user.
         self.lurking = False        # User is on "guest" mode, and can't send anything to room.
         
         self.gp = 0                 # Giftpoints. int()
@@ -1146,11 +1146,13 @@ class TinychatRoom():
     # Or from a the joins event, from users already in the room.
     def onJoin(self, u, joins=False, myself=False):
         user = self._makeUser(u.id)
+        
         user.nick = u.nick
         user.account = u.account
         user.mod = u.mod
         if u.stype:
             user.pro = True
+        user.device = u.btype
         user.admin = u.own
         user.gp = u.gp
         user.alevel = u.alevel
@@ -1188,7 +1190,7 @@ class TinychatRoom():
         
         # Handle cammed users.
         if user.broadcasting:
-            self.onBroadcast(user.nick, user.id, True)
+            self.onBroadcast(user.nick, user.id, True, user.device)
     
     # After finishing all the connection events. Ready for action!
     def onJoinsdone(self):
@@ -1387,11 +1389,11 @@ class TinychatRoom():
             self.forgives = filter(None, self.forgives)
     
     # When a user goes on cam.
-    def onBroadcast(self, nick, userid, fromJoin=False):
+    def onBroadcast(self, nick, userid, fromJoin=False, joinDevice=""):
         # Phone users get have a :android or :iphone in their broadcast id.
         try:
             userid = int(userid)
-            device = None
+            device = joinDevice
         except:
             col = userid.find(":")
             device = userid[col+1:]
@@ -1410,10 +1412,15 @@ class TinychatRoom():
             except:
                 traceback.print_exc()
         
-        if not fromJoin:
-            self._chatlog(nick + " is now broadcasting.", True)
+        if device:
+            d = " ["+device+"]"
         else:
-            self._chatlog(nick + " is broadcasting.", True)
+            d = ""
+        
+        if not fromJoin:
+            self._chatlog(nick + d + " is now broadcasting!", True)
+        else:
+            self._chatlog(nick + d + " is broadcasting!", True)
         user.broadcasting = True
         
         if user == self.user or not SETTINGS["ReceiveCams"]:
@@ -2349,14 +2356,15 @@ class TinychatRoom():
         if 'key":"' in raw.text:
             r = raw.text.split('key":"')[1].split('"')[0]
             rr = r.replace("\\", "")
-            self._sendCommand("cauth", [u"" + rr])
+            self._sendCommand("cauth", [rr])
         else:
             # Bypass Captcha.
             if BYPASS_CAPTCHA:
+                self._chatlog("Bypassing Captcha...")
                 try:
                     res = BYPASS_CAPTCHA.main(self)
                     if res:
-                        self._sendCommand("cauth", [u"" + res])
+                        self._sendCommand("cauth", [res])
                         self._chatlog("Captcha bypassed...")
                         return
                 except:
