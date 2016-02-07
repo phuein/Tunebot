@@ -5,7 +5,7 @@
 CMD                 !
 
 // API keys. Default from TC.
-YTKey               AIzaSyCPQe4gGZuyVQ78zdqf9O5iEyfVLPaRwZg
+YTKey               
 SCKey               b85334a9b08edb6778a50d965444fd39
 
 defaultTopic        *-=-= LOVE =-=-* ♥
