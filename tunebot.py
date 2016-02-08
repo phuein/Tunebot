@@ -1595,10 +1595,10 @@ def pmCommands(room, user, msg):
             return
         
         # Prevent excessive autobans, if not exact nick.
-        if target[0] != "*":
-            if len(target) <= 2:
-                room.pm(user, "Give me a partial nick longer than 2 characters...")
-                return
+        # if target[0] != "*":
+        #     if len(target) <= 2:
+        #         room.pm(user, "Give me a partial nick longer than 2 characters...")
+        #         return
         
         # Don't allow certain strings.
         ignores = ["newuser"]
@@ -1650,9 +1650,9 @@ def pmCommands(room, user, msg):
             return
         
         # Prevent excessive banwords.
-        if len(string) <= 2:
-            room.pm(user, "Give me a word longer than 2 characters...")
-            return
+        # if len(string) <= 2:
+        #     room.pm(user, "Give me a word longer than 2 characters...")
+        #     return
         
         if string in LISTS.banWords:
             LISTS.removeItem(l, string)
