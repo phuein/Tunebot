@@ -1633,6 +1633,12 @@ class TinychatRoom():
     # Send message to room.
     # Can filter to specific user, and return error message if failed.
     def say(self, msg, to=None):
+        # Strings with Unicode.
+        try:
+            msg = msg.decode("utf-8", "replace")
+        except:
+            pass
+        
         # Split message into several, if too long.
         # Avoid burdening say() - instead use notice().
         if len(msg) > SETTINGS["MaxCharsMsg"]:
@@ -1712,6 +1718,12 @@ class TinychatRoom():
             if not user:
                 return False
         
+        # Strings with Unicode.
+        try:
+            msg = msg.decode("utf-8", "replace")
+        except:
+            pass
+        
         # Split message into several, if too long.
         if len(msg) > SETTINGS["MaxCharsPM"]:
             maxLines = 9
@@ -1788,7 +1800,8 @@ class TinychatRoom():
             msgs = [""]
             i = 0
             for word in words:
-                if word == "": continue
+                if word == "":
+                    continue
                 
                 # Either add word, or move to next msg.
                 if len(msgs[i]) + len(word) < SETTINGS["MaxCharsNotice"]:
@@ -1833,11 +1846,12 @@ class TinychatRoom():
             
             self._sendCommand("owner_run", [u"notice" + encodedMsg])
         
-        # Back to unicode() for string manipulation.
+        # Strings with Unicode.
         try:
             msg = msg.decode("utf-8", "replace")
         except:
             pass
+        
         self._chatlog("*"+self.user.nick+"*: " + msg)
     
     # Does nothing, if has illegal characters.
@@ -2498,6 +2512,10 @@ def getYTduration(vid):
         # Must be embeddable.
         if not item["status"]["embeddable"]:
             return "Video "+vid+" is not embeddable..."
+        
+        # Must be accepted upload.
+        if item["status"]["uploadStatus"] == "rejected":
+            return "Video "+vid+" has been rejected for uploading..."
         
         duration = StringifiedToSeconds(item["contentDetails"]["duration"])
     except:
