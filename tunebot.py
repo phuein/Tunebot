@@ -1247,15 +1247,15 @@ def onMessageExtended(room, user, msg):
             if s in msg:
                 room.ban(user)
                 room._chatlog(user.nick + " (" + str(user.id) +
-                              ") has been banned from SNAPSHOT.", True)
+                    ") has been banned from SNAPSHOT.", True)
                 return
         
         # Autoban TC room links.
-        find = re.match(r'.*tinychat.com\/\w+($| |\/+ |\/+$).*', msg, re.I)
+        find = re.search(r'tinychat\.com/[A-Za-z0-9#_/]+($| )', msg, re.I)
         if find:
             room.ban(user)
             room._chatlog(user.nick + " (" + str(user.id) +
-                          ") has been banned from ROOM LINK.", True)
+                ") has been banned from ROOM LINK.", True)
             return
         
         # Unicode banwords.
@@ -1263,7 +1263,7 @@ def onMessageExtended(room, user, msg):
             if u"\u25b2" in msg or u"\x85" in msg:
                 room.ban(user)
                 room._chatlog(user.nick + " (" + str(user.id) +
-                              ") has been banned from UNICODE BANWORDS.", True)
+                    ") has been banned from UNICODE BANWORDS.", True)
                 return
         except:
             traceback.print_exc()
@@ -1279,7 +1279,7 @@ def onMessageExtended(room, user, msg):
             if lu > 0 and ll == 0:
                 room.ban(user)
                 room._chatlog(user.nick + " (" + str(user.id) +
-                              ") has been banned from banCaps!", True)
+                    ") has been banned from banCaps!", True)
                 return
         
         # Banwords, by substring.
@@ -1295,13 +1295,13 @@ def onMessageExtended(room, user, msg):
                     r = re.compile(r"" + words)
                 except Exception as e:
                     room._chatlog("Error compiling banWords regexp: " + words +
-                                  " - " + str(e), True)
+                        " - " + str(e), True)
                     continue
                 # If the rule matches the msg, then ban.
                 if r.match(msg):
                     room.ban(user)
                     room._chatlog(user.nick + " (" + str(user.id) +
-                                  ") has been banned from banWords regexp: r\"" + words, True)
+                        ") has been banned from banWords regexp: r\"" + words, True)
                     return
             else:
                 words = words.lower()
@@ -1309,7 +1309,7 @@ def onMessageExtended(room, user, msg):
                 if words in msgL:
                     room.ban(user)
                     room._chatlog(user.nick + " (" + str(user.id) +
-                                  ") has been banned from banWords: " + words, True)
+                        ") has been banned from banWords: " + words, True)
                     return
     
     # Room commands.
