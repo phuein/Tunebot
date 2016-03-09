@@ -1251,7 +1251,7 @@ def onMessageExtended(room, user, msg):
                 return
         
         # Autoban TC room links.
-        find = re.search(r'tinychat\.com/[A-Za-z0-9#_/]+($| )', msg, re.I)
+        find = re.search(r'tinychat\.com/[A-Za-z0-9#_:/]+($| )', msg, re.I)
         if find:
             room.ban(user)
             room._chatlog(user.nick + " (" + str(user.id) +
