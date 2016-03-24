@@ -328,6 +328,21 @@ except:
     # traceback.print_exc()
     INSTRUCTIONS = None
 
+# Get latest flash client version, for connection arguments.
+try:
+    r = requests.get("http://www.tinychat.com/embed/chat.js", timeout=10)
+    t = r.text
+    # Make sure result variable is str().
+    FLASH_VER = str(t.split("Tinychat-")[1].split(".swf")[0])     # '11.1-1.0.0.0660'
+    FLASH_MVER = str(FLASH_VER.split("-")[1])                     # '1.0.0.0660'
+    FLASH_SWFNAME = str("Tinychat-"+FLASH_VER+".swf")             # 'Tinychat-11.1-1.0.0.0660.swf'
+except Exception as e:
+    FLASH_VER = '11.1-1.0.0.0660'
+    FLASH_MVER = str(FLASH_VER.split("-")[1])
+    FLASH_SWFNAME = str("Tinychat-"+FLASH_VER+".swf")
+    print "Failed to get Flash Client version from Tinychat, using default values!"
+    print str(e)
+
 # Running on a Windows machine, or otherwise.
 if os.name == "nt":
     SETTINGS["RunningOnWindows"] = True
@@ -566,9 +581,9 @@ class TinychatRoom():
         self.port = int(tcurlsplits3[1])
         self.app = tcurlsplits1[3]                              # Defining Tinychat FMS App
         self.pageurl = "http://tinychat.com/"+room              # Definging Tinychat's Room HTTP URL
-        self.swfurl = "http://tinychat.com/embed/Tinychat-11.1-1.0.0.0651.swf?version=1.0.0.0651/[[DYNAMIC]]/8" #static
+        self.swfurl = "http://tinychat.com/embed/"+FLASH_SWFNAME+"?version="+FLASH_MVER+"/[[DYNAMIC]]/8" #static
         self.flashVer = "WIN 20,0,0,267"                        # static
-        self.pc = "Desktop 1.0.0.0651"
+        self.pc = "Desktop "+FLASH_MVER
         
         # Overrides.
         if SETTINGS["IP"]:
@@ -896,6 +911,11 @@ class TinychatRoom():
                 traceback.print_exc()
     
     def disconnect(self):
+        # Delete recaptcha file, in case closed during wait loop.
+        printFile(SETTINGS["Recaptcha"], local=True)
+        # Delete connection file.
+        printFile(self.room+".connected", local=True)
+        
         if self.connected:
             self.connected = False
             # Flush all chat messages in backlog.
@@ -906,12 +926,6 @@ class TinychatRoom():
             except:
                 self._chatlog("Failed to gracefully disconnect...", True)
             self._chatlog("=== Disconnected ===", True)
-            
-            # Delete recaptcha file, in case closed during wait loop.
-            printFile(SETTINGS["Recaptcha"], local=True)
-            
-            # Delete connection file.
-            printFile(self.room+".connected", local=True)
             
             # Instructions or further handling.
             if SETTINGS['disconnectExtend']:
@@ -1301,7 +1315,10 @@ class TinychatRoom():
         
         user.nick = new
         
-        self._chatlog(old+" ["+str(user.id)+"] is now known as "+new+".", True)
+        acct = ""
+        if user.account:
+            acct = " ("+user.account+")"
+        self._chatlog(old+" ["+str(user.id)+"]"+acct+" is now known as "+new+".", True)
         
         # Further handling.
         if SETTINGS['onNickChangeExtend']:
@@ -2245,7 +2262,8 @@ class TinychatRoom():
             
             # Failure to login, if only 1 cookie added.
             if len(self.s.cookies) == 1:
-                self._chatlog("Failed to login! Check your username and password...", True)
+                self._chatlog("Failed to login! Check your username and password... Waiting 5 seconds...", True)
+                time.sleep(5)
                 raise Exception()   # Kill this connection attempt.
     
     # Logins to Tinychat account, aquiring login cookies into session.
@@ -2308,7 +2326,11 @@ class TinychatRoom():
                 self.greenroom = True
             
             # Return rtmp address.
-            return raw.text.split("rtmp='")[1].split("'")[0]
+            try:
+                return raw.text.split("rtmp='")[1].split("'")[0]
+            except:
+                self._chatlog("No RTMP address available for this room...", True)
+                raise Exception()   # Kill this connection attempt.
     
     def getEncMills(self):
         headers = {
