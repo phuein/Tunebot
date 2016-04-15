@@ -196,12 +196,18 @@ class RtmpReader:
             while not body_stream.at_eof():
                 commands.append(decoder.readElement())
             ret['command'] = commands
+        
+        elif ret['msg'] == DataTypes.DATA_MESSAGE:
+            # superDebug("header.datatype enum", "COMMAND")
             
+            ret['event_data'] = body_stream.read()
+        
         elif ret['msg'] == DataTypes.SET_CHUNK_SIZE:
             # superDebug("header.datatype enum", "SET_CHUNK_SIZE")
             
             ret['chunk_size'] = body_stream.read_ulong()
-            
+            # print ret['chunk_size']
+            self.chunk_size = ret['chunk_size']
             # superDebug("chunk_size", ret['chunk_size'])
         elif ret['msg'] == DataTypes.VIDEO_MESSAGE:
             ret['streamid'] = header.streamId
@@ -305,7 +311,7 @@ class RtmpWriter:
             #
             body_stream.write_ushort(message['event_type'])
             body_stream.write(message['event_data'])
-        
+            
         elif datatype == DataTypes.SET_CHUNK_SIZE:
             body_stream.write_long(message['data'])
         
@@ -329,6 +335,11 @@ class RtmpWriter:
             for command in message['command']:
                 # superDebug("command iteration", command)
                 encoder.writeElement(command)
+        
+        elif datatype == DataTypes.DATA_MESSAGE:
+            # superDebug("enum", "COMMAND")
+            
+            body_stream.write(message['metadata'])
         
         elif datatype == DataTypes.SHARED_OBJECT:
             # superDebug("enum", "SHARED_OBJECT")
@@ -407,7 +418,7 @@ class RtmpWriter:
             stream_id = message['streamid']
             
             if "closeStream" in body:
-                channel_id = 8
+                channel_id = 4
             elif "deleteStream" in body:
                 channel_id = 3
             elif "publish" in body:

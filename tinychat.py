@@ -622,6 +622,7 @@ class TinychatRoom():
                     self.username, self.site, self.room, self.pc, self.type, self.timecookie)
                 
                 self.connection.connect()
+                
                 self.connected = True
                 self.keepAlive = True
                 SETTINGS["Reconnecting"] = False
@@ -665,6 +666,7 @@ class TinychatRoom():
                     self.reconnect()
                     break
                 # Otherwise, skip it.
+                # traceback.print_exc()
                 continue
             else:
                 # Reset count on success.
@@ -2343,7 +2345,9 @@ class TinychatRoom():
         # mills = self.roomTime
         url = "http://tinychat.com/cauth?room="+self.room+"&t="+str(mills)
         # r = self.s.request(method="GET", url=url, headers=headers, timeout=15)
-        r = self.s.get(url, timeout=15, proxies=self.proxies)
+        # r = self.s.get(url, timeout=15, proxies=self.proxies)
+        r = self.s.request(method="GET", url=url, headers=self.headers,
+            cookies=self.cookies, timeout=15, proxies=self.proxies)
         
         res = None
         try:
@@ -2364,9 +2368,12 @@ class TinychatRoom():
                 'Accept': 'gzip, deflate',
                 'Accept-Language': 'en-US,en;q=0.5',
                 'DNT': 1}
-        url = "http://tinychat.com/cauth/captcha" # Should have a number, like: ?0.5732091250829399 or ?0.2929161135107279
+        n = random.random()
+        url = "http://tinychat.com/cauth/captcha?"+str(n)
         # r = self.s.request(method="GET", url=url, headers=headers, timeout=15)
-        r = self.s.get(url, timeout=15, proxies=self.proxies)
+        # r = self.s.get(url, timeout=15, proxies=self.proxies)
+        r = self.s.request(method="GET", url=url, headers=self.headers,
+            cookies=self.cookies, timeout=15, proxies=self.proxies)
         
         # False stands for general failure.
         # 0 Stands for no need to do recaptcha.
@@ -2388,7 +2395,10 @@ class TinychatRoom():
     
     def sendCauth(self, userID):
         url = "http://tinychat.com/api/captcha/check.php?room="+self.site+"^"+self.room+"&guest_id="+str(self.user.id)
-        raw = self.s.get(url, timeout=15, proxies=self.proxies)
+        # raw = self.s.get(url, timeout=15, proxies=self.proxies)
+        raw = self.s.request(method="GET", url=url, headers=self.headers,
+            cookies=self.cookies, timeout=15, proxies=self.proxies)
+        
         if 'key":"' in raw.text:
             r = raw.text.split('key":"')[1].split('"')[0]
             rr = r.replace("\\", "")
@@ -2473,7 +2483,8 @@ class TinychatRoom():
                             char = None
                             while msvcrt.kbhit():
                                 char = msvcrt.getch()
-                            if char: break
+                            if char:
+                                break
                 else:
                     i = 1
                     minstr = "minute"
