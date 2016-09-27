@@ -1549,7 +1549,9 @@ class TinychatRoom():
             t = int(time.time())
             
             if YTqueue["start"]:
-                YTqueue["skip"] = skip
+                YTqueue["skip"]     = skip
+                # Reset start time.
+                YTqueue["start"]    = t
         
         if cmd == "mbpl":
             # Resume video at time.
@@ -1630,7 +1632,9 @@ class TinychatRoom():
             t = int(time.time())
             
             if SCqueue["start"]:
-                SCqueue["skip"] = skip
+                SCqueue["skip"]     = skip
+                # Reset start time.
+                SCqueue["start"]    = t
         
         if cmd == "mbpl":
             # Resume track at time.
@@ -2132,7 +2136,9 @@ class TinychatRoom():
         
         if YTqueue["start"]:
             t = int(time.time())
-            YTqueue["skip"] = skip
+            YTqueue["skip"]     = skip
+            # Reset start time.
+            YTqueue["start"]    = t
     
     # Try to play a SC track.
     # Returns True on success.
@@ -2222,7 +2228,9 @@ class TinychatRoom():
         
         if SCqueue["start"]:
             t = int(time.time())
-            SCqueue["skip"] = skip
+            SCqueue["skip"]     = skip
+            # Reset start time.
+            SCqueue["start"]    = t
     
     # Changes self.color to ar andom color.
     # Returns the selected color (key) name.
@@ -2705,7 +2713,7 @@ def getTimeYT():
     
     t = int(time.time())
     
-    # Current position in time, relative to video.
+    # Current position in video.
     lapsed = t - YTqueue["start"] + YTqueue["skip"]
     
     # Check that the video hasn't ended by itself.
@@ -2714,7 +2722,7 @@ def getTimeYT():
             YTqueue["start"] = 0
             return False
     
-    # Ignore time it was paused.
+    # Ignore time while being paused.
     if YTqueue["paused"]:
         d = t - YTqueue["paused"]
         lapsed -= d
@@ -2730,7 +2738,7 @@ def getTimeSC():
     
     t = int(time.time())
     
-    # Current position in time, relative to video.
+    # Current position in track.
     lapsed = t - SCqueue["start"] + SCqueue["skip"]
     
     # Check that the video hasn't ended by itself.
@@ -2739,7 +2747,7 @@ def getTimeSC():
             SCqueue["start"] = 0
             return False
     
-    # Ignore time it was paused.
+    # Ignore time while it was paused.
     if SCqueue["paused"]:
         d = t - SCqueue["paused"]
         lapsed -= d
