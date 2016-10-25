@@ -1,2 +1,2 @@
-// Partial nickname. One per line.
+// Nickname Autobans. One per line. By substring and always case-insensitive. Use * in the beginning of a name for exact match (still case-insensitive). Use ? for wildcards.
 
