@@ -1,2 +1,2 @@
-// Exact nicknames. One per line.
+// Each line is an exact nickname of a Botter. It’s recommended to add mods here, too. Names starting with @ are botters from account name. Names starting with * are modders, recognized as oper by mod from account name.
 
