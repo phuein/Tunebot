@@ -1,8 +1,11 @@
 # Tunebot
 A friendly fork of several other bots (QBot, Pinychat), designed to assist Tinychat users and moderators.
 
-**Enjoying the bot? Donate: -Paypal- phuein@gmail.com -Bitcoin- 1LoyRpNMVB85WkTLWLkn7g8iPgyaVBFHKf**<br>
-***Support for the code/bot is per payment, only.***
+**Enjoying the bot? Donate:**<br>
+* **Paypal:** phuein@gmail.com `(If asked, please choose the "Payment" option.)`<br>
+* **Bitcoin:** 1LoyRpNMVB85WkTLWLkn7g8iPgyaVBFHKf<br>![](http://1.bp.blogspot.com/-uQOmUidkCig/VIJU6htwJGI/AAAAAAAADNA/ih92mbkvSfw/s1600/download.png)<br>
+
+***Support requests are per payment, only.***
 
 Acknowledgements:
 + notnola
