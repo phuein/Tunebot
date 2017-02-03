@@ -1,1 +1,2 @@
+// Either a word or words. One match per line. Case-insensitive. Lines starting with @ are for PMs to bot (for catching pm spammers.) Wildcard is ?. Exact case-sensitive match starts with *. Regex strings start with r" - better not used!
 
