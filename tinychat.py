@@ -1815,9 +1815,9 @@ class TinychatRoom():
     if len(msg) > SETTINGS["MaxCharsNotice"]:
       maxLines = 6
       maxChars = maxLines * SETTINGS["MaxCharsNotice"] + 10
-      # Slice for efficiency, if needed.
+      # Slice for efficiency. Add ellipsis.
       if len(msg) > maxChars:
-        msg = msg[:maxChars]
+        msg = msg[:maxChars].strip() + "..."
       
       msgs = [""]
       i = 0
@@ -1834,7 +1834,7 @@ class TinychatRoom():
           if len(msgs[i]) + len(word) < SETTINGS["MaxCharsNotice"]:
             msgs[i] += word + " "
           else:
-            # If there's more than max lines, then end with three dots.
+            # If there's more than max lines, then end with ellipsis.
             if i == maxLines:
               if len(msgs[i]) >= SETTINGS["MaxCharsNotice"]-3:
                 msgs[i] = msgs[i][:-3].strip() + "..."
@@ -2282,23 +2282,26 @@ class TinychatRoom():
     #                 'DNT': 1,
     #                 'Connection': 'keep-alive'}
     
-    self.headers = {'Host': 'tinychat.com',
-    # 'Connection': 'keep-alive',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Origin': 'http://tinychat.com',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36 OPR/32.0.1949.25',
-    'Content-Type': 'application/x-www-form-urlencoded',
-    'Referer': 'http://tinychat.com/login?frame=true',
-    'Accept-Encoding': 'gzip, deflate, lzma',
-    'Accept-Language': 'en-US,en;q=0.8'}
+    self.headers = {
+      'Host': 'tinychat.com',
+      # 'Connection': 'keep-alive',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Origin': 'http://tinychat.com',
+      'User-Agent': ('Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 '+
+        '(KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36 OPR/32.0.1949.25'),
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Referer': 'http://tinychat.com/login?frame=true',
+      'Accept-Encoding': 'gzip, deflate, lzma',
+      'Accept-Language': 'en-US,en;q=0.8'
+    }
     
     # Only if login data available.
     if self.username and self.passwd:
       res = self.login()
       
       # Failed to establish connection or get proper response.
-      if not res:
-        self._chatlog("Failed to connect to tinychat.com for login...", True)
+      if res in (str, unicode):
+        self._chatlog("Failed to login! "+res, True)
         raise Exception()   # Kill this connection attempt.
       
       # Failure to login, if only 1 cookie added.
@@ -2315,25 +2318,44 @@ class TinychatRoom():
     if not password:
       password = self.passwd
     
-    data = {"form_sent": "1",
-        "referer": "",
-        "next": "https://tinychat.com/home",
-        "remember": "1",
-        "username": username,
-        "password": password,
-        "passwordfake": "Password"}
+    # Get login token from page.
+    try:
+      url = "https://tinychat.com/start?next=https%3A%2F%2Ftinychat.com%2Fhome#signin"
+      raw = self.s.request(method='GET', url=url, headers=self.headers,
+        timeout=20, proxies=self.proxies)
+      if raw.status_code != 200:
+        raise Exception("Status code: "+str(raw.status_code))
+      token = raw.content.split('id="csrf-token"')[1].split('content="')[1].split('"')[0]
+    except Exception as e:
+      # traceback.print_exc()
+      return str('Failed to get token: '+str(e))
+    
+    # data = {"form_sent": "1",
+    #     "referer": "",
+    #     "next": "https://tinychat.com/home",
+    #     "remember": "1",
+    #     "username": username,
+    #     "password": password,
+    #     "passwordfake": "Password"}
+    
+    data = {
+      'login_username': username,
+      'login_password': password,
+      'remember': '1',
+      'next': 'https://tinychat.com/',
+      '_token': token
+    }
     url = "https://tinychat.com/login"
     
-    # self.s = requests.session()
     try:
       # TODO: Remove empty cookies?
       raw = self.s.request(method='POST', url=url, data=data, headers=self.headers,
         cookies=self.cookies, timeout=20, proxies=self.proxies)
       if raw.status_code != 200:
         raise Exception("Status code: "+str(raw.status_code))
-    except:
+    except Exception as e:
       # traceback.print_exc()
-      return False
+      return str('Failed to get cookies: '+str(e))
     
     return True
   
