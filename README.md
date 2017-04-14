@@ -2,6 +2,7 @@
 A friendly fork of several other bots (QBot, Pinychat), designed to assist Tinychat users and moderators.
 
 **Enjoying the bot? Donate:**<br>
+* **Patreon:** https://www.patreon.com/jameskoss
 * **Paypal:** phuein@gmail.com `(If asked, please choose the "Payment" option.)`<br>
 * **Bitcoin:** 1LoyRpNMVB85WkTLWLkn7g8iPgyaVBFHKf<br>![](http://1.bp.blogspot.com/-uQOmUidkCig/VIJU6htwJGI/AAAAAAAADNA/ih92mbkvSfw/s1600/download.png)<br>
 
